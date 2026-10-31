@@ -10,7 +10,7 @@
         if (window.__BASE_PATH__) return window.__BASE_PATH__;
         const match = window.location.pathname.match(/^(\/p\d+\/[^/]+\/[^/]+)/);
         if (match) return match[1];
-        return localStorage.getItem('fuxa_base_path') || '';
+        return localStorage.getItem('fuxa_base_path') || '/p9/div6/l1';
     }
 
     function setBasePath(newPath) {
@@ -20,20 +20,41 @@
         return clean;
     }
 
+    function getTargetPort() {
+        if (window.location.port && window.location.port !== '80' && window.location.port !== '443') {
+            const p = parseInt(window.location.port, 10);
+            localStorage.setItem('fuxa_target_port', p);
+            return p;
+        }
+        return parseInt(localStorage.getItem('fuxa_target_port') || '9610', 10);
+    }
+
+    async function syncSubpathToGateway(newSubpath) {
+        const port = getTargetPort();
+        try {
+            const gatewayUrl = `${window.location.protocol}//${window.location.hostname}${window.location.port === '80' || !window.location.port ? '' : ':80'}/api/gateway/subpath`;
+            await fetch(gatewayUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ subpath: newSubpath, port: port })
+            });
+            console.log(`[FUXA-Gateway] Successfully registered route: ${newSubpath} -> Port ${port}`);
+        } catch (e) {
+            console.warn('[FUXA-Gateway] Could not sync subpath to gateway:', e);
+        }
+    }
+
     function getHostUrl() {
-        const port = window.location.port;
-        // Standard Port 80/443 for clean OT URLs
+        // Standard Port 80 for clean OT URLs
         return `${window.location.protocol}//${window.location.hostname}`;
     }
 
     function getCurrentViewName() {
-        // Try reading from URL or Angular route
         const parts = window.location.pathname.split('/');
         const last = parts[parts.length - 1];
         if (last && last !== 'editor' && last !== 'home' && last !== '') {
             return last;
         }
-        // Try reading active tab or view in editor
         const activeTab = document.querySelector('.mat-mdc-tab.mdc-tab--active, .mat-tab-label-active');
         if (activeTab) {
             return activeTab.textContent.trim();
@@ -46,7 +67,6 @@
         const observer = new MutationObserver(() => {
             const dialog = document.querySelector('app-app-settings, .mat-mdc-dialog-container');
             if (dialog && !dialog.querySelector('.custom-url-setting-field')) {
-                // Find server port input container
                 const portInput = dialog.querySelector('input[numberonly], input[disabled]');
                 if (portInput) {
                     const portContainer = portInput.closest('.my-form-field') || portInput.parentElement;
@@ -62,15 +82,15 @@
                                 🌐 Custom URL / Subpath (Port 80 OT Reverse Proxy)
                             </span>
                             <div style="display: flex; gap: 8px; align-items: center;">
-                                <input id="fuxa-subpath-input" type="text" value="${currentSubpath}" placeholder="/p9/div6/l1" 
+                                <input id="fuxa-subpath-input" type="text" value="${currentSubpath}" placeholder="/p9/ps/ems" 
                                        style="flex: 1; padding: 6px 10px; border: 1px solid #94a3b8; border-radius: 4px; font-family: monospace; font-size: 13px; background: white;" />
                                 <button id="fuxa-subpath-save-btn" type="button" 
                                         style="background: #0284c7; color: white; border: none; padding: 7px 14px; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 12px;">
-                                    Save
+                                    Save & Route
                                 </button>
                             </div>
                             <small style="color: #64748b; display: block; margin-top: 6px; font-size: 11px;">
-                                Clean subpath to access this server on Port 80 without OT port restrictions.
+                                Instantly creates clean subpath on Port 80 without external Nginx.
                             </small>
                         `;
 
@@ -79,14 +99,16 @@
                         // Attach save listener
                         const saveBtn = customDiv.querySelector('#fuxa-subpath-save-btn');
                         const input = customDiv.querySelector('#fuxa-subpath-input');
-                        saveBtn.addEventListener('click', () => {
+                        saveBtn.addEventListener('click', async () => {
                             const val = input.value.trim();
                             if (val) {
-                                setBasePath(val);
+                                const clean = setBasePath(val);
+                                saveBtn.textContent = 'Saving...';
+                                await syncSubpathToGateway(clean);
                                 saveBtn.textContent = 'Saved! ✓';
                                 saveBtn.style.background = '#16a34a';
                                 setTimeout(() => {
-                                    saveBtn.textContent = 'Save';
+                                    saveBtn.textContent = 'Save & Route';
                                     saveBtn.style.background = '#0284c7';
                                 }, 2000);
                             }
@@ -126,7 +148,7 @@
         let modal = document.getElementById('fuxa-url-modal');
         if (modal) modal.remove();
 
-        const subpath = getBasePath() || '/p9/div6/l1';
+        const subpath = getBasePath();
         const hostUrl = getHostUrl();
         const viewName = getCurrentViewName();
         
@@ -154,8 +176,8 @@
                         <div style="display: flex; gap: 8px;">
                             <input id="modal-subpath-input" type="text" value="${subpath}" 
                                    style="flex: 1; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 4px; font-family: monospace; font-size: 13px;" />
-                            <button id="modal-subpath-apply" style="background: #334155; color: white; border: none; padding: 8px 14px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">
-                                Apply
+                            <button id="modal-subpath-apply" style="background: #0284c7; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">
+                                Apply & Route
                             </button>
                         </div>
                     </div>
@@ -171,7 +193,7 @@
                             <button id="btn-copy-view-url" style="background: #0284c7; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; white-space: nowrap;">
                                 📋 Copy URL
                             </button>
-                            <a href="${fullViewUrl}" target="_blank" style="background: #e2e8f0; color: #334155; text-decoration: none; padding: 8px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; white-space: nowrap;">
+                            <a id="link-open-view" href="${fullViewUrl}" target="_blank" style="background: #e2e8f0; color: #334155; text-decoration: none; padding: 8px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; white-space: nowrap;">
                                 ↗ Open
                             </a>
                         </div>
@@ -232,12 +254,27 @@
 
         const applyBtn = modal.querySelector('#modal-subpath-apply');
         const subInput = modal.querySelector('#modal-subpath-input');
-        applyBtn.onclick = () => {
-            const newPath = setBasePath(subInput.value.trim());
-            viewInput.value = viewName ? `${hostUrl}${newPath}/home/${viewName}` : `${hostUrl}${newPath}/home`;
-            editorInput.value = `${hostUrl}${newPath}/editor`;
-            applyBtn.textContent = 'Applied! ✓';
-            setTimeout(() => { applyBtn.textContent = 'Apply'; }, 1500);
+        const openLink = modal.querySelector('#link-open-view');
+        applyBtn.onclick = async () => {
+            const raw = subInput.value.trim();
+            if (!raw) return;
+            const newPath = setBasePath(raw);
+            applyBtn.textContent = 'Routing...';
+            await syncSubpathToGateway(newPath);
+
+            const updatedViewUrl = viewName ? `${hostUrl}${newPath}/home/${viewName}` : `${hostUrl}${newPath}/home`;
+            const updatedEditorUrl = `${hostUrl}${newPath}/editor`;
+
+            viewInput.value = updatedViewUrl;
+            editorInput.value = updatedEditorUrl;
+            openLink.href = updatedViewUrl;
+
+            applyBtn.textContent = 'Active! ✓';
+            applyBtn.style.background = '#16a34a';
+            setTimeout(() => { 
+                applyBtn.textContent = 'Apply & Route';
+                applyBtn.style.background = '#0284c7';
+            }, 2000);
         };
     }
 

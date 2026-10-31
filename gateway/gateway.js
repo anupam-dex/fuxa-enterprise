@@ -84,6 +84,62 @@ function findTarget(reqUrl) {
 
 // Create HTTP Gateway Server
 const server = http.createServer((req, res) => {
+    // 1. Dynamic Subpath Update API (called by FUXA UI to change custom URLs live)
+    if (req.method === 'POST' && req.url === '/api/gateway/subpath') {
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', () => {
+            try {
+                const data = JSON.parse(body);
+                const newSubpath = '/' + (data.subpath || '').replace(/^\/+|\/+$/g, '');
+                const targetPort = parseInt(data.port, 10);
+
+                if (!newSubpath || isNaN(targetPort)) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    return res.end(JSON.stringify({ error: 'Invalid subpath or port' }));
+                }
+
+                // Update in-memory routing table immediately
+                routingTable[newSubpath] = {
+                    port: targetPort,
+                    name: `Instance ${targetPort}`,
+                    plant: 9
+                };
+
+                // Persist to registry.json
+                if (fs.existsSync(REGISTRY_PATH)) {
+                    const raw = fs.readFileSync(REGISTRY_PATH, 'utf8');
+                    const reg = JSON.parse(raw);
+                    let found = false;
+                    for (const [k, inst] of Object.entries(reg.instances || {})) {
+                        if (inst.port === targetPort) {
+                            inst.subpath = newSubpath;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        reg.instances = reg.instances || {};
+                        reg.instances[`port_${targetPort}`] = {
+                            port: targetPort,
+                            subpath: newSubpath,
+                            name: `Custom Line (${newSubpath})`
+                        };
+                    }
+                    fs.writeFileSync(REGISTRY_PATH, JSON.stringify(reg, null, 2));
+                }
+
+                console.log(`[Gateway] Registered live subpath: ${newSubpath} -> Port ${targetPort}`);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({ success: true, subpath: newSubpath, port: targetPort }));
+            } catch (err) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                return res.end(JSON.stringify({ error: err.message }));
+            }
+        });
+        return;
+    }
+
     const target = findTarget(req.url);
 
     if (!target) {
@@ -97,23 +153,59 @@ const server = http.createServer((req, res) => {
         `);
     }
 
-    // Proxy HTTP request
+    // Rewrite path to target: strip subpath prefix so FUXA receives clean root paths
+    let proxyPath = req.url;
+    if (target.prefix && proxyPath.startsWith(target.prefix)) {
+        proxyPath = proxyPath.slice(target.prefix.length);
+        if (!proxyPath.startsWith('/')) {
+            proxyPath = '/' + proxyPath;
+        }
+    }
+
     const options = {
         hostname: '127.0.0.1',
         port: target.port,
-        path: req.url,
+        path: proxyPath,
         method: req.method,
         headers: {
             ...req.headers,
             'x-forwarded-for': req.socket.remoteAddress,
             'x-forwarded-proto': req.headers['x-forwarded-proto'] || 'http',
-            'x-forwarded-host': req.headers['host'] || 'scada.plant.internal'
+            'x-forwarded-host': req.headers['host'] || '127.0.0.1',
+            'x-subpath-prefix': target.prefix || ''
         }
     };
 
     const proxyReq = http.request(options, (proxyRes) => {
-        res.writeHead(proxyRes.statusCode, proxyRes.headers);
-        proxyRes.pipe(res, { end: true });
+        const isHtml = (proxyRes.headers['content-type'] || '').includes('text/html');
+
+        if (isHtml && target.prefix) {
+            // Buffer HTML and rewrite <base href> dynamically to current custom subpath
+            const chunks = [];
+            proxyRes.on('data', chunk => chunks.push(chunk));
+            proxyRes.on('end', () => {
+                let html = Buffer.concat(chunks).toString('utf8');
+                const baseHref = target.prefix.replace(/\/+$/, '') + '/';
+
+                // Rewrite <base href="...">
+                html = html.replace(/<base href="[^"]*"\s*\/?>/i, `<base href="${baseHref}" />`);
+
+                // Rewrite window.__BASE_PATH__
+                html = html.replace(/window\.__BASE_PATH__\s*=\s*[^;]+/g, `window.__BASE_PATH__ = "${target.prefix}"`);
+
+                const modifiedBuf = Buffer.from(html, 'utf8');
+                const newHeaders = { ...proxyRes.headers };
+                newHeaders['content-length'] = modifiedBuf.length;
+                delete newHeaders['etag']; // invalidate stale etag
+
+                res.writeHead(proxyRes.statusCode, newHeaders);
+                res.end(modifiedBuf);
+            });
+        } else {
+            // Stream binary, assets, API responses directly
+            res.writeHead(proxyRes.statusCode, proxyRes.headers);
+            proxyRes.pipe(res, { end: true });
+        }
     });
 
     proxyReq.on('error', (err) => {
@@ -133,10 +225,18 @@ server.on('upgrade', (req, socket, head) => {
         return;
     }
 
+    let proxyPath = req.url;
+    if (target.prefix && proxyPath.startsWith(target.prefix)) {
+        proxyPath = proxyPath.slice(target.prefix.length);
+        if (!proxyPath.startsWith('/')) {
+            proxyPath = '/' + proxyPath;
+        }
+    }
+
     // Connect to internal FUXA instance port via raw TCP socket
     const proxySocket = net.connect(target.port, '127.0.0.1', () => {
-        // Replay initial HTTP upgrade handshake
-        proxySocket.write(`${req.method} ${req.url} HTTP/${req.httpVersion}\r\n`);
+        // Replay initial HTTP upgrade handshake with rewritten path
+        proxySocket.write(`${req.method} ${proxyPath} HTTP/${req.httpVersion}\r\n`);
         for (const [key, val] of Object.entries(req.headers)) {
             proxySocket.write(`${key}: ${val}\r\n`);
         }
