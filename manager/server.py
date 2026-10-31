@@ -33,6 +33,46 @@ NGINX_CONF_DIR = os.path.join(BASE_DIR, "nginx", "conf.d")
 port_engine = PortEngine()
 running_processes = {}  # instance_id -> subprocess.Popen
 
+def ensure_default_storage_servers():
+    """Hosts central storage collector instances for each plant by default"""
+    plants = port_engine.registry.get("plants", {})
+    for plant_id, p_info in plants.items():
+        storage_port = p_info["storage_port"]
+        storage_work_dir = os.path.join(INSTANCES_DIR, f"storage_plant_{plant_id}_{storage_port}")
+        os.makedirs(storage_work_dir, exist_ok=True)
+
+        if not port_engine.is_port_in_use(storage_port):
+            logger.info(f"Hosting Central Storage Server for Plant {plant_id} on Port {storage_port}...")
+            db_path = os.path.join(storage_work_dir, "project.fuxap.db")
+            if not os.path.exists(db_path):
+                generate_fuxa_database(
+                    target_dir=storage_work_dir,
+                    plant_id=int(plant_id),
+                    division_name=f"Central Storage Master (Plant {plant_id})",
+                    line_name="PLC Collector & InfluxDB Storage",
+                    opcua_endpoint="opc.tcp://127.0.0.1:4845"
+                )
+            _launch_fuxa_instance(f"storage_p{plant_id}", storage_port, storage_work_dir, f"/p{plant_id}/storage")
+
+@app.on_event("startup")
+def on_startup():
+    logger.info("Initializing FUXA Fleet Orchestrator...")
+    # 1. Host storage servers for all plants by default
+    ensure_default_storage_servers()
+
+    # 2. Automatically restore and re-launch all existing view servers
+    instances = port_engine.get_all_instances()
+    for inst_id, inst in list(instances.items()):
+        port = inst.get("port")
+        work_dir = inst.get("work_dir") or os.path.join(INSTANCES_DIR, f"port_{port}")
+        subpath = inst.get("subpath") or f"/p{inst.get('plant', 9)}/div{inst.get('division', 1)}/l{inst.get('line', 1)}"
+        if port and not port_engine.is_port_in_use(port):
+            logger.info(f"Auto-restoring View Server {inst_id} on Port {port} ({subpath})...")
+            pid = _launch_fuxa_instance(inst_id, port, work_dir, subpath)
+            inst["pid"] = pid
+            inst["status"] = "RUNNING" if pid else "STOPPED"
+            port_engine.register_instance(inst_id, inst)
+
 class CreateProjectRequest(BaseModel):
     plant: int
     division: int

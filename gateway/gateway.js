@@ -15,30 +15,36 @@ const path = require('path');
 
 const GATEWAY_PORT = parseInt(process.env.GATEWAY_PORT || '80', 10);
 const REGISTRY_PATH = path.resolve(__dirname, '../manager/registry.json');
+const PERSISTENT_REGISTRY = path.resolve(__dirname, '../instances/registry.json');
 const FLEET_MANAGER_PORT = parseInt(process.env.FLEET_MANAGER_PORT || '9000', 10);
 
 let routingTable = {}; // subpath -> { port, plant, name }
 
 function loadRoutes() {
     try {
-        if (fs.existsSync(REGISTRY_PATH)) {
-            const raw = fs.readFileSync(REGISTRY_PATH, 'utf8');
-            const data = JSON.parse(raw);
-            const instances = data.instances || {};
-            const newTable = {};
+        const newTable = {};
+        const filesToRead = [REGISTRY_PATH, PERSISTENT_REGISTRY];
 
-            for (const [id, inst] of Object.entries(instances)) {
-                if (inst.subpath && inst.port) {
-                    const cleanPath = '/' + inst.subpath.replace(/^\/+|\/+$/g, '');
-                    newTable[cleanPath] = {
-                        port: inst.port,
-                        name: inst.name || id,
-                        plant: inst.plant
-                    };
-                }
+        for (const fpath of filesToRead) {
+            if (fs.existsSync(fpath)) {
+                try {
+                    const raw = fs.readFileSync(fpath, 'utf8');
+                    const data = JSON.parse(raw);
+                    const instances = data.instances || {};
+                    for (const [id, inst] of Object.entries(instances)) {
+                        if (inst.subpath && inst.port) {
+                            const cleanPath = '/' + inst.subpath.replace(/^\/+|\/+$/g, '');
+                            newTable[cleanPath] = {
+                                port: inst.port,
+                                name: inst.name || id,
+                                plant: inst.plant
+                            };
+                        }
+                    }
+                } catch (e) {}
             }
-            routingTable = newTable;
         }
+        routingTable = newTable;
     } catch (e) {
         // preserve existing on read error
     }
@@ -46,12 +52,14 @@ function loadRoutes() {
 
 // Initial load & watch
 loadRoutes();
-if (fs.existsSync(path.dirname(REGISTRY_PATH))) {
-    fs.watchFile(REGISTRY_PATH, { interval: 1000 }, () => {
-        loadRoutes();
-        console.log(`[Gateway] Routing table updated: ${Object.keys(routingTable).length} active routes.`);
-    });
-}
+[REGISTRY_PATH, PERSISTENT_REGISTRY].forEach(p => {
+    if (fs.existsSync(path.dirname(p))) {
+        fs.watchFile(p, { interval: 1000 }, () => {
+            loadRoutes();
+            console.log(`[Gateway] Routing table updated: ${Object.keys(routingTable).length} active routes.`);
+        });
+    }
+});
 
 function findTarget(reqUrl) {
     const parsed = url.parse(reqUrl);
@@ -106,28 +114,36 @@ const server = http.createServer((req, res) => {
                     plant: 9
                 };
 
-                // Persist to registry.json
-                if (fs.existsSync(REGISTRY_PATH)) {
-                    const raw = fs.readFileSync(REGISTRY_PATH, 'utf8');
-                    const reg = JSON.parse(raw);
-                    let found = false;
-                    for (const [k, inst] of Object.entries(reg.instances || {})) {
-                        if (inst.port === targetPort) {
-                            inst.subpath = newSubpath;
-                            found = true;
-                            break;
+                // Persist to both registry.json and protected instances/registry.json
+                [REGISTRY_PATH, PERSISTENT_REGISTRY].forEach(p => {
+                    try {
+                        let reg = { plants: {}, divisions: {}, instances: {} };
+                        if (fs.existsSync(p)) {
+                            reg = JSON.parse(fs.readFileSync(p, 'utf8'));
                         }
-                    }
-                    if (!found) {
                         reg.instances = reg.instances || {};
-                        reg.instances[`port_${targetPort}`] = {
-                            port: targetPort,
-                            subpath: newSubpath,
-                            name: `Custom Line (${newSubpath})`
-                        };
-                    }
-                    fs.writeFileSync(REGISTRY_PATH, JSON.stringify(reg, null, 2));
-                }
+                        let found = false;
+                        for (const [k, inst] of Object.entries(reg.instances)) {
+                            if (inst.port === targetPort) {
+                                inst.subpath = newSubpath;
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found) {
+                            reg.instances[`port_${targetPort}`] = {
+                                port: targetPort,
+                                subpath: newSubpath,
+                                name: `Custom Line (${newSubpath})`
+                            };
+                        }
+                        os.makedirs && os.makedirs(path.dirname(p), { recursive: true });
+                        if (!fs.existsSync(path.dirname(p))) {
+                            fs.mkdirSync(path.dirname(p), { recursive: true });
+                        }
+                        fs.writeFileSync(p, JSON.stringify(reg, null, 2));
+                    } catch (e) {}
+                });
 
                 console.log(`[Gateway] Registered live subpath: ${newSubpath} -> Port ${targetPort}`);
                 res.writeHead(200, { 'Content-Type': 'application/json' });

@@ -14,15 +14,10 @@ REGISTRY_FILE = os.path.join(os.path.dirname(__file__), "registry.json")
 class PortEngine:
     def __init__(self, registry_path=REGISTRY_FILE):
         self.registry_path = registry_path
+        self.persistent_path = os.path.join(os.path.dirname(__file__), "..", "instances", "registry.json")
         self.registry = self._load_registry()
 
-    def _load_registry(self):
-        if os.path.exists(self.registry_path):
-            try:
-                with open(self.registry_path, "r") as f:
-                    return json.load(f)
-            except Exception:
-                pass
+    def _default_registry(self):
         return {
             "plants": {
                 "1": {"name": "Plant 1 - Foundry & Powerhouse", "storage_port": 5100},
@@ -44,9 +39,44 @@ class PortEngine:
             "instances": {}
         }
 
+    def _load_registry(self):
+        data = self._default_registry()
+
+        # 1. Load from manager/registry.json
+        if os.path.exists(self.registry_path):
+            try:
+                with open(self.registry_path, "r") as f:
+                    reg = json.load(f)
+                    if "plants" in reg: data["plants"] = reg["plants"]
+                    if "divisions" in reg: data["divisions"] = reg["divisions"]
+                    if "instances" in reg: data["instances"].update(reg["instances"])
+            except Exception:
+                pass
+
+        # 2. Merge from protected persistent file (instances/registry.json, never overwritten by git)
+        if os.path.exists(self.persistent_path):
+            try:
+                with open(self.persistent_path, "r") as f:
+                    saved = json.load(f)
+                    if "instances" in saved and saved["instances"]:
+                        data["instances"].update(saved["instances"])
+            except Exception:
+                pass
+
+        return data
+
     def _save_registry(self):
+        # Save to manager/registry.json
         with open(self.registry_path, "w") as f:
             json.dump(self.registry, f, indent=2)
+
+        # Also save to git-ignored instances/registry.json
+        try:
+            os.makedirs(os.path.dirname(self.persistent_path), exist_ok=True)
+            with open(self.persistent_path, "w") as f:
+                json.dump(self.registry, f, indent=2)
+        except Exception:
+            pass
 
     def is_port_in_use(self, port: int) -> bool:
         """Checks if a port is listening on the host network"""
