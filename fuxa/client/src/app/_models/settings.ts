@@ -7,6 +7,10 @@ export class AppSettings {
     editorSectionMessages = new EditorSectionMessagesSettings();
     /** Web server port */
     uiPort = 1881;
+    /** Custom Subpath / URL (e.g. /plant9/paintshop/line1) */
+    basePath = '';
+    /** Public Hostname / Domain (e.g. scada.plant.internal) */
+    publicHost = '';
     /** Security access to enable user and authentication */
     secureEnabled = false;
     /** Secret code to sign/verify tokens */

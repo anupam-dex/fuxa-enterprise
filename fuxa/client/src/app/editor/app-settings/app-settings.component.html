@@ -19,6 +19,14 @@
                                 <span>{{'dlg.app-settings-server-port' | translate}}</span>
                                 <input numberOnly [(ngModel)]="settings.uiPort" style="width: 320px" type="text" disabled="true">
                             </div>
+                            <div class="my-form-field block mt15 system-input">
+                                <span>Custom URL / Subpath (e.g. /p9/paintshop/line1)</span>
+                                <input [(ngModel)]="settings.basePath" placeholder="/plant9/paintshop/line1" style="width: 320px" type="text">
+                            </div>
+                            <div class="my-form-field block mt15 system-input">
+                                <span>Public Domain / Host (e.g. scada.plant.internal)</span>
+                                <input [(ngModel)]="settings.publicHost" placeholder="scada.plant.internal" style="width: 320px" type="text">
+                            </div>
                             <div class="my-form-field block mt15">
                                 <div class="my-form-field system-input inbk">
                                     <span style="display: inline-block;">{{'dlg.app-settings-auth-token' | translate}}</span>

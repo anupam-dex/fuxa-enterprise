@@ -45,6 +45,25 @@ export class ViewPropertyComponent implements OnInit, OnDestroy {
         }
     }
 
+    getPageUrl(): string {
+        const viewName = this.data.name || this.formGroup?.controls?.name?.value || '';
+        const origin = window.location.origin;
+        const basePath = window.location.pathname.replace(/\/editor.*$/, '').replace(/\/+$/, '');
+        return `${origin}${basePath}/home/${encodeURIComponent(viewName)}`;
+    }
+
+    copyPageUrl() {
+        const url = this.getPageUrl();
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(url);
+        }
+    }
+
+    openPageUrl() {
+        const url = this.getPageUrl();
+        window.open(url, '_blank');
+    }
+
     ngOnInit() {
         this.formGroup = this.fb.group({
             name: [{value: this.data.name, disabled: this.data.name}, Validators.required],

@@ -17,7 +17,7 @@ const FUXA = require('./fuxa.js');
 const runtime = require('./runtime');
 const authJwt = require('./api/jwt-helper');
 
-const BASE_PATH = (process.env.BASE_PATH || '').replace(/\/+$/, '');
+let BASE_PATH = (process.env.BASE_PATH || '').replace(/\/+$/, '');
 
 const express = require('express');
 const app = express();
@@ -115,6 +115,9 @@ try {
     settings.webcamSnapShotsDir = path.resolve(rootDir, settings.webcamSnapShotsDir);
     settings.logDir = path.resolve(rootDir, settings.logDir);
     settings.dbDir = path.resolve(rootDir, settings.dbDir || '_db');
+    if (!BASE_PATH && settings.basePath) {
+        BASE_PATH = settings.basePath.replace(/\/+$/, '');
+    }
 } catch (err) {
     logger.error('Error loading settings file: ' + settingsFile)
     if (err.code == 'MODULE_NOT_FOUND') {

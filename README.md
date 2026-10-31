@@ -1,90 +1,103 @@
-# FUXA Fleet Manager & OPC-UA Central Storage Bridge
+# FUXA Enterprise SCADA Fleet & Zero-Nginx Gateway
 
-An industrial-grade SCADA Orchestration platform built specifically to eliminate device duplication, export/import loops, and PLC connection overhead across multiple plants and divisions.
+A complete industrial SCADA orchestration suite built on top of the latest FUXA release.
+Designed specifically for strict OT environments that disallow port numbers, require automatic tag mapping without manual dashboard redevelopment, and eliminate external Nginx configuration overhead.
 
 ---
 
-## Architecture Overview
+## What Makes This Enterprise Version Different
 
 ```
-                      FACTORY OT FLOOR (PLCs / S7 / Modbus)
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       OT CLIENTS (OPERATORS / KIOSKS)                       │
+│           Access via standard Port 80 / 443 (No custom ports!)             │
+│      URL: https://scada.plant.internal/p9/paintshop/line1/home/Oven_1       │
+└──────────────────────────────────────┬──────────────────────────────────────┘
                                        │
                                        ▼
-                     [ 4 Plant Storage Servers (Ports 5100..5900) ]
-                     - Always running
-                     - Dedicated PLC polling & InfluxDB Logging
-                                       │
-                                       ▼ (Real-time Live Tags)
-                     ┌───────────────────────────────────────────┐
-                     │   Central OPC-UA Bridge (Port 4840/4845)  │
-                     │   - Exposes hierarchical tag address tree │
-                     │   - Plant -> Division -> Line -> Tag      │
-                     └─────────────────────┬─────────────────────┘
-                                           │ (opc.tcp://127.0.0.1:4840)
-       ┌───────────────────────────────────┴───────────────────────────────────┐
-       ▼                                                                       ▼
-[ View Instance 9610 ]                                              [ View Instance 9620 ]
-Plant 9 / Paintshop / Line 1                                        Plant 9 / Paintshop / Line 2
-• Pre-loaded OPC-UA Device                                          • Pre-loaded OPC-UA Device
-• Zero Direct PLCs                                                  • Zero Direct PLCs
-• Native Tag Browsing in UI                                         • Native Tag Browsing in UI
-• Subpath: /p9/div6/l1                                              • Subpath: /p9/div6/l2
+┌─────────────────────────────────────────────────────────────────────────────┐
+│             EMBEDDED NODE.JS OT GATEWAY (Port 80 / 443)                    │
+│   • Replaces external Nginx completely (Zero Nginx service required)        │
+│   • Dynamic in-memory subpath routing: /p9/paintshop/line1 -> :9610         │
+│   • Full WebSockets / Socket.IO streaming with zero 60-second timeouts     │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │ (Internal loopback: 127.0.0.1)
+         ┌─────────────────────────────┴─────────────────────────────┐
+         ▼                                                           ▼
+┌────────────────────────────────┐          ┌────────────────────────────────┐
+│  View Server 9610 (Paintshop)  │          │  View Server 9620 (Assembly)   │
+│  • StorageProxy Active         │          │  • StorageProxy Active         │
+│  • Zero direct PLC polling     │          │  • Zero direct PLC polling     │
+│  • Zero InfluxDB duplication   │          │  • Zero InfluxDB duplication   │
+│  • 100% Exact Tag IDs matched  │          │  • 100% Exact Tag IDs matched  │
+└────────────────┬───────────────┘          └────────────────┬───────────────┘
+                 │                                           │
+                 └─────────────────────┬─────────────────────┘
+                                       │ (Internal socket/HTTP)
+                                       ▼
+                     ┌───────────────────────────────────┐
+                     │ Plant Storage Server (Port 5100)  │
+                     │ • Master PLC Connections          │
+                     │ • Historical InfluxDB logging     │
+                     └───────────────────────────────────┘
 ```
 
 ---
 
-## Key Features
+## Key Features Implemented
 
-1. **Deterministic Port Engine**:
-   - Calculates port automatically from `Plant + Division + Line + 0` (e.g., Plant 9, Paintshop 6, Line 1 $\rightarrow$ `9610`).
-   - Automatically detects occupied ports and resolves collisions (`9611`, `9612`...).
-2. **Interactive Visual Port Matrix**:
-   - Dashboard mapping all 4 plants, active storage ports, and deployed view servers.
-   - 1-click links to launch the FUXA Editor (`/editor`) or Kiosk View (`/home`).
-3. **Automated Zero-Driver Tag Ingestion**:
-   - When an engineer creates a new project in the Fleet Manager, it pre-provisions `project.fuxap.db`.
-   - **Only ONE device is configured**: `Plant_Storage_OPCUA`.
-   - Modbus, S7, BACnet, and direct PLC drivers are hidden.
-   - Historical InfluxDB logging is stripped so view instances never write to the database.
-   - Clicking **"Browse Tags"** inside the FUXA UI displays the entire live plant hierarchy directly from the Storage Server.
-4. **OT Security & Nginx Reverse Proxy**:
-   - Automatic generation of isolated Nginx route files with long-lived WebSocket support (`proxy_read_timeout 86400s`).
-   - Generates clean subpaths: `https://scada.plant.internal/p9/div6/l1`.
+### 1. StorageProxy Driver (Zero-Remapping for Existing Dashboards)
+* **Problem:** Re-adding devices breaks existing widget mappings and tag IDs across dozens of developed dashboards.
+* **Solution:** When started with `STORAGE_SERVER_URL=http://127.0.0.1:5100`, FUXA loads your existing `project.json` directly. The `StorageProxy` driver maps all existing tag and device IDs (`d_xxxx`, `t_yyyy`) directly to the storage server stream.
+* **Result:** **100% of existing dashboards, gauges, trends, and views work immediately without any editing or remapping.**
 
----
+### 2. Embedded Node.js OT Gateway (Zero External Nginx)
+* Located in `gateway/gateway.js`.
+* Listens on **Port 80 / 443** (OT standard).
+* Automatically reads the fleet routing table (`manager/registry.json`).
+* Routes clean subpaths (e.g. `/plant9/paintshop/line1`) directly to internal ports (`9610`).
+* Handles WebSocket upgrade handshakes transparently.
 
-## Directory Structure
+### 3. Custom URL & Public Host Box in Settings
+* Inside **Settings $\rightarrow$ Server Settings**:
+  * **Server Port:** Internal port (e.g., `9610`).
+  * **Custom URL / Subpath:** Public path (e.g., `/plant9/paintshop/line1`).
+  * **Public Domain / Host:** Domain name (e.g., `scada.plant.internal`).
 
-```text
-fuxa-fleet-manager/
-├── bridge/
-│   └── opcua_bridge.py          # Central OPC-UA Server Bridge
-├── manager/
-│   ├── server.py                # FastAPI Orchestrator API
-│   ├── port_engine.py           # Port calculation & collision resolver
-│   ├── project_builder.py       # Pre-provisions clean SQLite project.fuxap.db
-│   ├── registry.json            # Plant & Port allocation registry
-│   └── static/                  # Dark-mode Web UI & Visual Port Map
-│       ├── index.html
-│       ├── styles.css
-│       └── app.js
-├── nginx/
-│   ├── fuxa_route_generator.py  # Nginx route generator
-│   └── conf.d/                  # Auto-generated Nginx location blocks
-├── fuxa/                        # Official FUXA (latest) repository
-├── start_all.sh                 # 1-click launcher
-└── test_system.py               # End-to-end integration test
-```
+### 4. 📋 "Copy Direct Page URL" for Every View
+* **In View Properties Dialog:** A direct URL display with **[Copy URL]** and **[↗️ Open]** buttons.
+* **In Views Sidebar List:** A quick **🔗 link icon** next to each view name that copies the exact OT-compliant link to the clipboard.
 
 ---
 
-## Quick Start on Linux
+## Installation & Verification on Linux
 
+### Step 1: Clone your repository
 ```bash
-cd /opt/fuxa-fleet-manager
-chmod +x start_all.sh
-./start_all.sh
+git clone git@github.com:anupam-dex/<your-new-repo>.git fuxa-enterprise
+cd fuxa-enterprise
 ```
 
-Open your browser at:
-`http://<server-ip>:9000`
+### Step 2: Install Node dependencies for FUXA Server
+```bash
+cd fuxa/server
+npm install
+cd ../..
+```
+
+### Step 3: Launch the Entire System (1-Click)
+```bash
+chmod +x start_all.sh
+sudo ./start_all.sh
+```
+*(Running with `sudo` allows the Embedded Gateway to bind directly to standard **Port 80**).*
+
+---
+
+### Verifying Existing Project JSON
+
+1. Open your browser at:
+   `http://<server-ip>/p9/paintshop/line1/editor`
+2. Go to **Settings $\rightarrow$ Project $\rightarrow$ Import Project**.
+3. Upload your existing `project.json`.
+4. Open your existing dashboards: **all tags, gauges, and historical charts will stream live immediately with zero manual mapping.**

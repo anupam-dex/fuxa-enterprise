@@ -49,6 +49,27 @@ export class EditorViewsListComponent {
         });
     }
 
+    getViewUrl(view: View): string {
+        const origin = window.location.origin;
+        const basePath = window.location.pathname.replace(/\/editor.*$/, '').replace(/\/+$/, '');
+        return `${origin}${basePath}/home/${encodeURIComponent(view.name)}`;
+    }
+
+    onCopyViewUrl(view: View, event?: MouseEvent) {
+        if (event) {
+            event.stopPropagation();
+        }
+        const url = this.getViewUrl(view);
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(url);
+        }
+    }
+
+    onOpenViewUrl(view: View) {
+        const url = this.getViewUrl(view);
+        window.open(url, '_blank');
+    }
+
     isViewActive(view) {
         return (this.currentView && this.currentView.name === view.name);
     }

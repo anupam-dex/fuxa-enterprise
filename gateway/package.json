@@ -1,0 +1,9 @@
+{
+  "name": "fuxa-embedded-gateway",
+  "version": "1.0.0",
+  "description": "Zero-Nginx Embedded Node.js Reverse Proxy Gateway for FUXA SCADA Fleet",
+  "main": "gateway.js",
+  "dependencies": {
+    "http-proxy": "^1.18.1"
+  }
+}

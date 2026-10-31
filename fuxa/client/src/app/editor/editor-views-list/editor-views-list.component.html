@@ -23,12 +23,20 @@
     <span class="view-item-text">
         {{item.name}}
     </span>
+    <mat-icon aria-label="Copy Link"
+              (click)="onCopyViewUrl(item, $event)"
+              matTooltip="Copy Direct Page URL"
+              style="font-size: 18px; width: 18px; height: 18px; margin-right: 4px; opacity: 0.7;">
+        link
+    </mat-icon>
     <mat-icon aria-label="More"
               [matMenuTriggerFor]="menuview">
         more_vert
     </mat-icon>
     <mat-menu #menuview="matMenu"
               class="leftbar-item-menu">
+        <button mat-menu-item (click)="onCopyViewUrl(item)">Copy Direct URL</button>
+        <button mat-menu-item (click)="onOpenViewUrl(item)">Open in New Tab</button>
         <button mat-menu-item (click)="onDeleteView(item)">{{'editor.view-delete' | translate}}</button>
         <button mat-menu-item (click)="onRenameView(item)">{{'editor.view-rename' | translate}}</button>
         <button mat-menu-item (click)="onPropertyView(item)">{{'editor.view-property' | translate}}</button>

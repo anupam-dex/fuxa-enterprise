@@ -16,6 +16,18 @@
                                type="text">
                     </div>
                     <div class="my-form-field block mt5">
+                        <span>Direct Page URL (OT Compliant)</span>
+                        <div style="display: flex; gap: 8px; align-items: center; margin-top: 4px;">
+                            <input readonly [value]="getPageUrl()" style="flex: 1; padding: 6px 10px; font-family: monospace; font-size: 12px; background: rgba(0,0,0,0.1); border: 1px solid rgba(128,128,128,0.3); border-radius: 4px;" type="text">
+                            <button type="button" mat-stroked-button (click)="copyPageUrl()" matTooltip="Copy Link to Clipboard">
+                                Copy URL
+                            </button>
+                            <button type="button" mat-icon-button (click)="openPageUrl()" matTooltip="Open in New Window">
+                                <mat-icon>open_in_new</mat-icon>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="my-form-field block mt5">
                         <span>{{'dlg.docproperty-type' | translate}}</span>
                         <mat-select formControlName="type"
                                     placeholder="{{'dlg.doctype' | translate}}">
