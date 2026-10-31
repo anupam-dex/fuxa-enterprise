@@ -88,7 +88,7 @@
                                 </span>
                                 <div style="display: flex; gap: 8px; align-items: center;">
                                     <input id="fuxa-subpath-input" type="text" value="${currentSubpath}" placeholder="/p9/ps/ems" 
-                                           style="width: 240px; padding: 6px 10px; border: 1px solid #94a3b8; border-radius: 4px; font-family: monospace; font-size: 13px; background: white;" />
+                                           style="width: 240px; padding: 6px 10px; border: 1px solid #94a3b8; border-radius: 4px; font-family: monospace; font-size: 13px; background: white; user-select: text !important; -webkit-user-select: text !important; pointer-events: auto !important; cursor: text !important;" />
                                     <button id="fuxa-subpath-save-btn" type="button" 
                                             style="background: #0284c7; color: white; border: none; padding: 7px 14px; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 12px; white-space: nowrap;">
                                         Apply & Route
@@ -141,6 +141,24 @@
                         const openLink = customDiv.querySelector('#fuxa-link-open-view');
                         const copyViewBtn = customDiv.querySelector('#fuxa-btn-copy-view');
                         const copyEditorBtn = customDiv.querySelector('#fuxa-btn-copy-editor');
+
+                        // Stop FUXA / SVG editor from intercepting keystrokes and clicks
+                        ['keydown', 'keyup', 'keypress', 'input', 'mousedown', 'pointerdown', 'click'].forEach(evt => {
+                            input.addEventListener(evt, (e) => {
+                                e.stopPropagation();
+                            }, true);
+                            viewInput.addEventListener(evt, (e) => {
+                                e.stopPropagation();
+                            }, true);
+                            editorInput.addEventListener(evt, (e) => {
+                                e.stopPropagation();
+                            }, true);
+                        });
+
+                        input.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            input.focus();
+                        });
 
                         saveBtn.addEventListener('click', async () => {
                             const val = input.value.trim();
