@@ -1,6 +1,6 @@
 /**
  * FUXA Enterprise - Custom URL & Direct Page URL Manager
- * Integrated directly inside the Settings (⚙️) Setup Card
+ * Integrated directly inside the Settings (⚙️) Setup Card with native FUXA styling
  */
 
 (function () {
@@ -72,7 +72,8 @@
                     if (portContainer) {
                         const customDiv = document.createElement('div');
                         customDiv.className = 'my-form-field block mt15 custom-url-setting-field';
-                        customDiv.style.cssText = 'margin-top: 15px; padding: 14px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);';
+                        // Subtle, neat outline matching FUXA Material theme with indigo accent bar
+                        customDiv.style.cssText = 'margin-top: 15px; width: 320px; box-sizing: border-box; padding: 10px 12px; background: rgba(0, 0, 0, 0.02); border: 1px solid rgba(63, 81, 181, 0.2); border-left: 3px solid #3f51b5; border-radius: 3px;';
                         
                         const currentSubpath = getBasePath();
                         const hostUrl = getHostUrl();
@@ -82,50 +83,50 @@
 
                         customDiv.innerHTML = `
                             <!-- Subpath Editing Section -->
-                            <div style="margin-bottom: 12px;">
-                                <span style="font-weight: 600; color: #0284c7; display: block; margin-bottom: 6px; font-size: 13px;">
-                                    🌐 Custom URL / Subpath (Port 80 OT Reverse Proxy)
+                            <div style="margin-bottom: 10px;">
+                                <span style="display: block; font-size: 12px; font-weight: 500; opacity: 0.85; margin-bottom: 4px; color: inherit;">
+                                    Custom URL / Subpath
                                 </span>
-                                <div style="display: flex; gap: 8px; align-items: center;">
+                                <div style="display: flex; gap: 6px; align-items: center;">
                                     <input id="fuxa-subpath-input" type="text" value="${currentSubpath}" placeholder="/p9/ps/ems" 
-                                           style="width: 240px; padding: 6px 10px; border: 1px solid #94a3b8; border-radius: 4px; font-family: monospace; font-size: 13px; background: white; user-select: text !important; -webkit-user-select: text !important; pointer-events: auto !important; cursor: text !important;" />
+                                           style="flex: 1; height: 28px; padding: 3px 6px; font-size: 13px; font-family: inherit; border: 1px solid #ccc; border-radius: 2px; background-color: var(--formInputBackground, #fff); color: var(--formInputColor, #111); box-sizing: border-box; user-select: text !important; -webkit-user-select: text !important; pointer-events: auto !important; cursor: text !important;" />
                                     <button id="fuxa-subpath-save-btn" type="button" 
-                                            style="background: #0284c7; color: white; border: none; padding: 7px 14px; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 12px; white-space: nowrap;">
-                                        Apply & Route
+                                            style="height: 28px; padding: 0 10px; font-size: 12px; font-weight: 500; border: 1px solid #3f51b5; border-radius: 2px; background: #3f51b5; color: #fff; cursor: pointer; line-height: 26px; white-space: nowrap;">
+                                        Apply
                                     </button>
                                 </div>
-                                <small style="color: #64748b; display: block; margin-top: 4px; font-size: 11px;">
-                                    Dynamically routes this instance to Port 80 without external Nginx.
-                                </small>
+                                <span style="display: block; font-size: 10px; opacity: 0.55; margin-top: 3px;">
+                                    Port 80 clean OT subpath (e.g. /p9/ps/ems)
+                                </span>
                             </div>
 
                             <!-- Direct Page URLs Section -->
-                            <div style="border-top: 1px dashed #cbd5e1; padding-top: 10px; margin-top: 10px;">
-                                <div style="font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 4px;">
-                                    📱 Direct Operator View URL:
-                                </div>
-                                <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 8px;">
+                            <div style="border-top: 1px solid rgba(0, 0, 0, 0.08); padding-top: 8px; margin-top: 8px;">
+                                <span style="display: block; font-size: 11px; opacity: 0.7; margin-bottom: 3px;">
+                                    Operator View URL
+                                </span>
+                                <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 6px;">
                                     <input id="fuxa-view-url-text" readonly type="text" value="${fullViewUrl}" 
-                                           style="width: 240px; padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-family: monospace; font-size: 11px; background: white; color: #0f172a;" />
+                                           style="flex: 1; height: 26px; padding: 2px 6px; font-size: 11px; font-family: monospace; border: 1px solid #ddd; border-radius: 2px; background: rgba(0, 0, 0, 0.03); color: inherit; box-sizing: border-box; user-select: text !important; -webkit-user-select: text !important;" />
                                     <button id="fuxa-btn-copy-view" type="button" 
-                                            style="background: #0284c7; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; white-space: nowrap;">
-                                        📋 Copy
+                                            style="height: 26px; padding: 0 8px; font-size: 11px; border: 1px solid #aaa; border-radius: 2px; background: transparent; color: inherit; cursor: pointer; white-space: nowrap;">
+                                        Copy
                                     </button>
                                     <a id="fuxa-link-open-view" href="${fullViewUrl}" target="_blank" 
-                                       style="background: #e2e8f0; color: #334155; text-decoration: none; padding: 5px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; white-space: nowrap;">
-                                        ↗ Open
+                                       style="height: 26px; padding: 0 8px; font-size: 11px; border: 1px solid #aaa; border-radius: 2px; background: transparent; color: inherit; text-decoration: none; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center;">
+                                        Open ↗
                                     </a>
                                 </div>
 
-                                <div style="font-size: 12px; font-weight: 600; color: #334155; margin-bottom: 4px;">
-                                    🛠️ Direct Editor Clean URL:
-                                </div>
+                                <span style="display: block; font-size: 11px; opacity: 0.7; margin-bottom: 3px;">
+                                    Editor URL
+                                </span>
                                 <div style="display: flex; gap: 6px; align-items: center;">
                                     <input id="fuxa-editor-url-text" readonly type="text" value="${fullEditorUrl}" 
-                                           style="width: 240px; padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-family: monospace; font-size: 11px; background: white; color: #0f172a;" />
+                                           style="flex: 1; height: 26px; padding: 2px 6px; font-size: 11px; font-family: monospace; border: 1px solid #ddd; border-radius: 2px; background: rgba(0, 0, 0, 0.03); color: inherit; box-sizing: border-box; user-select: text !important; -webkit-user-select: text !important;" />
                                     <button id="fuxa-btn-copy-editor" type="button" 
-                                            style="background: #64748b; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600; white-space: nowrap;">
-                                        📋 Copy
+                                            style="height: 26px; padding: 0 8px; font-size: 11px; border: 1px solid #aaa; border-radius: 2px; background: transparent; color: inherit; cursor: pointer; white-space: nowrap;">
+                                        Copy
                                     </button>
                                 </div>
                             </div>
@@ -143,7 +144,7 @@
                         const copyEditorBtn = customDiv.querySelector('#fuxa-btn-copy-editor');
 
                         // Stop FUXA / SVG editor from intercepting keystrokes and clicks
-                        ['keydown', 'keyup', 'keypress', 'input', 'mousedown', 'pointerdown', 'click'].forEach(evt => {
+                        ['keydown', 'keyup', 'keypress', 'input', 'mousedown', 'pointerdown'].forEach(evt => {
                             input.addEventListener(evt, (e) => {
                                 e.stopPropagation();
                             }, true);
@@ -164,7 +165,7 @@
                             const val = input.value.trim();
                             if (val) {
                                 const clean = setBasePath(val);
-                                saveBtn.textContent = 'Routing...';
+                                saveBtn.textContent = 'Applying...';
                                 await syncSubpathToGateway(clean);
                                 
                                 const updatedViewUrl = viewName ? `${hostUrl}${clean}/home/${viewName}` : `${hostUrl}${clean}/home`;
@@ -175,10 +176,12 @@
                                 openLink.href = updatedViewUrl;
 
                                 saveBtn.textContent = 'Active! ✓';
-                                saveBtn.style.background = '#16a34a';
+                                saveBtn.style.borderColor = '#2e7d32';
+                                saveBtn.style.background = '#2e7d32';
                                 setTimeout(() => {
-                                    saveBtn.textContent = 'Apply & Route';
-                                    saveBtn.style.background = '#0284c7';
+                                    saveBtn.textContent = 'Apply';
+                                    saveBtn.style.borderColor = '#3f51b5';
+                                    saveBtn.style.background = '#3f51b5';
                                 }, 2000);
                             }
                         });
@@ -186,20 +189,20 @@
                         copyViewBtn.addEventListener('click', () => {
                             navigator.clipboard.writeText(viewInput.value);
                             copyViewBtn.textContent = 'Copied! ✓';
-                            copyViewBtn.style.background = '#16a34a';
+                            copyViewBtn.style.borderColor = '#2e7d32';
                             setTimeout(() => {
-                                copyViewBtn.textContent = '📋 Copy';
-                                copyViewBtn.style.background = '#0284c7';
+                                copyViewBtn.textContent = 'Copy';
+                                copyViewBtn.style.borderColor = '#aaa';
                             }, 2000);
                         });
 
                         copyEditorBtn.addEventListener('click', () => {
                             navigator.clipboard.writeText(editorInput.value);
                             copyEditorBtn.textContent = 'Copied! ✓';
-                            copyEditorBtn.style.background = '#16a34a';
+                            copyEditorBtn.style.borderColor = '#2e7d32';
                             setTimeout(() => {
-                                copyEditorBtn.textContent = '📋 Copy';
-                                copyEditorBtn.style.background = '#64748b';
+                                copyEditorBtn.textContent = 'Copy';
+                                copyEditorBtn.style.borderColor = '#aaa';
                             }, 2000);
                         });
                     }
