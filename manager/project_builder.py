@@ -20,17 +20,30 @@ def generate_fuxa_database(target_dir: str, plant_id: int, division_name: str, l
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
 
-    # Create FUXA core tables
+    # Create FUXA core tables (all 12 required by prjstorage.js)
     cur.execute("CREATE TABLE IF NOT EXISTS general (name TEXT PRIMARY KEY, value TEXT);")
     cur.execute("CREATE TABLE IF NOT EXISTS views (name TEXT PRIMARY KEY, value TEXT);")
     cur.execute("CREATE TABLE IF NOT EXISTS devices (name TEXT PRIMARY KEY, value TEXT, connection TEXT, cntid TEXT, cntpwd TEXT);")
     cur.execute("CREATE TABLE IF NOT EXISTS devicesSecurity (name TEXT PRIMARY KEY, value TEXT);")
     cur.execute("CREATE TABLE IF NOT EXISTS texts (name TEXT PRIMARY KEY, value TEXT);")
     cur.execute("CREATE TABLE IF NOT EXISTS alarms (name TEXT PRIMARY KEY, value TEXT);")
+    cur.execute("CREATE TABLE IF NOT EXISTS recipes (name TEXT PRIMARY KEY, value TEXT);")
+    cur.execute("CREATE TABLE IF NOT EXISTS notifications (name TEXT PRIMARY KEY, value TEXT);")
+    cur.execute("CREATE TABLE IF NOT EXISTS scripts (name TEXT PRIMARY KEY, value TEXT);")
+    cur.execute("CREATE TABLE IF NOT EXISTS reports (name TEXT PRIMARY KEY, value TEXT);")
+    cur.execute("CREATE TABLE IF NOT EXISTS locations (name TEXT PRIMARY KEY, value TEXT);")
+    cur.execute("CREATE TABLE IF NOT EXISTS arMarkers (name TEXT PRIMARY KEY, value TEXT);")
 
-    # 1. General settings
+    # 1. General settings & version
+    cur.execute("INSERT OR REPLACE INTO general (name, value) VALUES (?, ?);", ("version", "1.00"))
+    
+    # Required FuxaServer device (id: '0')
+    fuxa_server_dev = {"id": "0", "name": "FUXA Server", "type": "FuxaServer", "property": {}}
+    cur.execute("INSERT OR REPLACE INTO devices (name, value, connection, cntid, cntpwd) VALUES (?, ?, ?, ?, ?);",
+                ("server", json.dumps(fuxa_server_dev), "", "", ""))
+
     general_data = {
-        "version": "1.02",
+        "version": "1.00",
         "title": f"Plant {plant_id} - {division_name} ({line_name})",
         "header": {
             "title": f"Plant {plant_id} | {division_name}",
@@ -38,7 +51,6 @@ def generate_fuxa_database(target_dir: str, plant_id: int, division_name: str, l
             "login": True
         }
     }
-    cur.execute("INSERT OR REPLACE INTO general (name, value) VALUES (?, ?);", ("version", "1.02"))
     cur.execute("INSERT OR REPLACE INTO general (name, value) VALUES (?, ?);", ("general", json.dumps(general_data)))
 
     # 2. Pre-configure OPC-UA Storage Device
