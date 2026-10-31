@@ -78,6 +78,7 @@ class CreateProjectRequest(BaseModel):
     division: int
     line: int
     project_name: str
+    custom_subpath: str = None
 
 class UpdateSubpathRequest(BaseModel):
     port: int
@@ -149,15 +150,18 @@ def create_project(req: CreateProjectRequest):
         opcua_endpoint="opc.tcp://127.0.0.1:4840"
     )
 
-    # 3. Generate Nginx reverse proxy route & subpath
-    conf_path, subpath = generate_nginx_conf(
-        plant=req.plant,
-        division=req.division,
-        line=req.line,
-        port=port,
-        project_name=req.project_name,
-        output_dir=NGINX_CONF_DIR
-    )
+    # 3. Generate reverse proxy route & subpath
+    if req.custom_subpath and req.custom_subpath.strip():
+        subpath = "/" + req.custom_subpath.strip().strip("/")
+    else:
+        conf_path, subpath = generate_nginx_conf(
+            plant=req.plant,
+            division=req.division,
+            line=req.line,
+            port=port,
+            project_name=req.project_name,
+            output_dir=NGINX_CONF_DIR
+        )
     reload_nginx()
 
     # 4. Launch FUXA View Server instance

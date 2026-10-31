@@ -84,7 +84,13 @@ function updatePortPreview() {
 
     const basePort = `${plant}${div}${line}0`;
     document.getElementById('p-calc-result').textContent = basePort;
-    document.getElementById('subpath-preview').textContent = `/p${plant}/div${div}/l${line}`;
+
+    const defaultSub = `/p${plant}/div${div}/l${line}`;
+    const subInput = document.getElementById('input-subpath');
+    if (subInput && (!subInput.value || subInput.value.startsWith('/p'))) {
+        subInput.value = defaultSub;
+    }
+    document.getElementById('subpath-preview').textContent = subInput ? subInput.value : defaultSub;
 }
 
 async function submitCreateProject() {
@@ -92,6 +98,7 @@ async function submitCreateProject() {
     const div = parseInt(document.getElementById('sel-div').value);
     const line = parseInt(document.getElementById('input-line').value || '1');
     const name = document.getElementById('input-name').value || `Plant ${plant} Div ${div} Line ${line}`;
+    const customSubpath = (document.getElementById('input-subpath')?.value || '').trim();
 
     const btn = document.getElementById('btn-submit');
     btn.disabled = true;
@@ -105,7 +112,8 @@ async function submitCreateProject() {
                 plant: plant,
                 division: div,
                 line: line,
-                project_name: name
+                project_name: name,
+                custom_subpath: customSubpath
             })
         });
 
@@ -132,21 +140,43 @@ async function deleteInstance(id) {
     }
 }
 
-async function editInstance(id, currentName, currentSubpath) {
-    const newName = prompt('Enter new Project Name:', currentName);
-    if (newName === null) return;
-    const newSubpath = prompt('Enter Custom Subpath (e.g. /p9/ps/ems):', currentSubpath);
-    if (newSubpath === null) return;
+function editInstance(id, currentName, currentSubpath) {
+    document.getElementById('edit-instance-id').value = id;
+    document.getElementById('edit-input-name').value = currentName;
+    document.getElementById('edit-input-subpath').value = currentSubpath;
+    document.getElementById('edit-modal').classList.add('show');
+}
+
+function closeEditModal() {
+    document.getElementById('edit-modal').classList.remove('show');
+}
+
+async function submitEditInstance() {
+    const id = document.getElementById('edit-instance-id').value;
+    const name = document.getElementById('edit-input-name').value.trim();
+    const subpath = document.getElementById('edit-input-subpath').value.trim();
+    const btn = document.getElementById('btn-save-edit');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
 
     try {
-        await fetch(`/api/instances/${id}/rename`, {
+        const res = await fetch(`/api/instances/${id}/rename`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: newName.trim(), subpath: newSubpath.trim() })
+            body: JSON.stringify({ name: name, subpath: subpath })
         });
-        loadMatrix();
+        const data = await res.json();
+        if (data.success) {
+            closeEditModal();
+            loadMatrix();
+        } else {
+            alert('Failed: ' + (data.detail || 'Unknown error'));
+        }
     } catch (e) {
-        alert('Failed to update: ' + e.message);
+        alert('Error: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save & Route';
     }
 }
 
