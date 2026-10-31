@@ -109,19 +109,23 @@ class PortEngine:
         return candidate
 
     def register_instance(self, instance_id, data):
+        self.registry = self._load_registry()
         self.registry["instances"][instance_id] = data
         self._save_registry()
 
     def unregister_instance(self, instance_id):
+        self.registry = self._load_registry()
         if instance_id in self.registry["instances"]:
             del self.registry["instances"][instance_id]
             self._save_registry()
 
     def get_all_instances(self):
+        self.registry = self._load_registry()
         return self.registry.get("instances", {})
 
     def get_port_matrix(self):
         """Returns a comprehensive visual map of ports and plant occupancy"""
+        self.registry = self._load_registry()
         matrix = []
         plants = self.registry.get("plants", {})
         instances = self.registry.get("instances", {})

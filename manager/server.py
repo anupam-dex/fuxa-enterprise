@@ -11,6 +11,7 @@ import psutil
 import subprocess
 import logging
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
@@ -24,6 +25,14 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("FleetManager")
 
 app = FastAPI(title="FUXA Fleet Manager & Visual Port Orchestrator")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 INSTANCES_DIR = os.path.join(BASE_DIR, "instances")
@@ -100,6 +109,27 @@ def update_subpath(req: UpdateSubpathRequest):
             port_engine.register_instance(inst_id, inst)
             found = True
             break
+
+    if not found:
+        inst_id = f"port_{req.port}"
+        inst = {
+            "id": inst_id,
+            "port": req.port,
+            "subpath": new_sub,
+            "name": req.name or f"Custom Line ({new_sub})",
+            "editor_url": f"{new_sub}/editor",
+            "home_url": f"{new_sub}/home"
+        }
+        port_engine.register_instance(inst_id, inst)
+        found = True
+
+    # Notify Embedded Gateway on Port 80
+    try:
+        import requests
+        requests.post("http://127.0.0.1:80/api/gateway/subpath", json={"subpath": new_sub, "port": req.port}, timeout=0.5)
+    except Exception:
+        pass
+
     return {"success": True, "subpath": new_sub, "found": found}
 
 @app.post("/api/instances/{instance_id}/rename")
@@ -115,6 +145,11 @@ def rename_instance(instance_id: str, req: dict):
         inst["subpath"] = new_sub
         inst["editor_url"] = f"{new_sub}/editor"
         inst["home_url"] = f"{new_sub}/home"
+        try:
+            import requests
+            requests.post("http://127.0.0.1:80/api/gateway/subpath", json={"subpath": new_sub, "port": inst.get("port")}, timeout=0.5)
+        except Exception:
+            pass
     port_engine.register_instance(instance_id, inst)
     return {"success": True, "instance": inst}
 

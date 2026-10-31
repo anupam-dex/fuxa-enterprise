@@ -29,12 +29,30 @@
         return parseInt(localStorage.getItem('fuxa_target_port') || '9610', 10);
     }
 
-    async function syncSubpathToGateway(newSubpath) {
-        const port = getTargetPort();
+    async function syncSubpathToGateway(newSubpath, customPort, customName) {
+        const port = customPort || getTargetPort();
         const host = window.location.hostname || '127.0.0.1';
-        const payload = JSON.stringify({ subpath: newSubpath, port: port });
+        const payload = JSON.stringify({ subpath: newSubpath, port: port, name: customName });
 
-        // Update Gateway (Port 80)
+        // 1. Update same-origin FUXA Server endpoint (100% immune to CORS)
+        try {
+            await fetch('api/custom-subpath', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: payload
+            });
+            console.log(`[FUXA] Same-origin subpath registered: ${newSubpath}`);
+        } catch (e) {
+            try {
+                await fetch('/api/custom-subpath', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: payload
+                });
+            } catch (e2) {}
+        }
+
+        // 2. Update Gateway (Port 80)
         try {
             await fetch(`http://${host}/api/gateway/subpath`, {
                 method: 'POST',
@@ -47,7 +65,7 @@
             console.warn('[FUXA-Gateway] Gateway sync warning:', e);
         }
 
-        // Update Fleet Manager (Port 9000)
+        // 3. Update Fleet Manager (Port 9000)
         try {
             await fetch(`http://${host}:9000/api/update-subpath`, {
                 method: 'POST',
@@ -183,7 +201,11 @@
                             if (val) {
                                 const clean = setBasePath(val);
                                 saveBtn.textContent = 'Applying...';
-                                await syncSubpathToGateway(clean);
+                                
+                                const detectedPort = parseInt(portInput.value, 10) || getTargetPort();
+                                localStorage.setItem('fuxa_target_port', detectedPort);
+                                
+                                await syncSubpathToGateway(clean, detectedPort);
                                 
                                 const updatedViewUrl = viewName ? `${hostUrl}${clean}/home/${viewName}` : `${hostUrl}${clean}/home`;
                                 const updatedEditorUrl = `${hostUrl}${clean}/editor`;

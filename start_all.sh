@@ -18,16 +18,21 @@ else
     "$SCRIPT_DIR/venv/bin/pip" install -q aiofiles 2>/dev/null || true
 fi
 
-# Stop system nginx if running on Port 80
-if command -v systemctl &>/dev/null && systemctl is-active --quiet nginx 2>/dev/null; then
+# Stop and disable system nginx if running on Port 80
+if command -v systemctl &>/dev/null; then
     echo "Notice: Freeing Port 80 (stopping conflicting system nginx)..."
-    systemctl stop nginx 2>/dev/null || true
+    sudo systemctl stop nginx 2>/dev/null || systemctl stop nginx 2>/dev/null || true
+    sudo systemctl disable nginx 2>/dev/null || true
 fi
 
-# Cleanup any previous lingering daemon processes
-pkill -f "uvicorn server:app" 2>/dev/null || true
-pkill -f "opcua_bridge.py" 2>/dev/null || true
-pkill -f "gateway.js" 2>/dev/null || true
+# Force kill any lingering processes on critical ports 80, 9000, 4845
+echo "Notice: Ensuring ports 80, 9000, 4845 are free..."
+fuser -k 80/tcp 9000/tcp 4845/tcp 2>/dev/null || true
+sudo fuser -k 80/tcp 9000/tcp 4845/tcp 2>/dev/null || true
+pkill -9 -f "uvicorn" 2>/dev/null || true
+pkill -9 -f "opcua_bridge.py" 2>/dev/null || true
+pkill -9 -f "gateway.js" 2>/dev/null || true
+sleep 1
 
 if [ ! -d "$SCRIPT_DIR/fuxa/server/node_modules" ]; then
     echo "Installing FUXA server node modules..."

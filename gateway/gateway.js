@@ -136,24 +136,44 @@ const server = http.createServer((req, res) => {
                         for (const [k, inst] of Object.entries(reg.instances)) {
                             if (inst.port === targetPort) {
                                 inst.subpath = newSubpath;
+                                inst.editor_url = `${newSubpath}/editor`;
+                                inst.home_url = `${newSubpath}/home`;
+                                if (data.name) inst.name = data.name;
                                 found = true;
                                 break;
                             }
                         }
                         if (!found) {
                             reg.instances[`port_${targetPort}`] = {
+                                id: `port_${targetPort}`,
                                 port: targetPort,
                                 subpath: newSubpath,
-                                name: `Custom Line (${newSubpath})`
+                                name: data.name || `Custom Line (${newSubpath})`,
+                                editor_url: `${newSubpath}/editor`,
+                                home_url: `${newSubpath}/home`
                             };
                         }
-                        os.makedirs && os.makedirs(path.dirname(p), { recursive: true });
                         if (!fs.existsSync(path.dirname(p))) {
                             fs.mkdirSync(path.dirname(p), { recursive: true });
                         }
                         fs.writeFileSync(p, JSON.stringify(reg, null, 2));
                     } catch (e) {}
                 });
+
+                // Notify Fleet Manager (Port 9000)
+                try {
+                    const notifyReq = http.request({
+                        hostname: '127.0.0.1',
+                        port: 9000,
+                        path: '/api/update-subpath',
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        timeout: 1000
+                    }, () => {});
+                    notifyReq.on('error', () => {});
+                    notifyReq.write(JSON.stringify({ subpath: newSubpath, port: targetPort, name: data.name }));
+                    notifyReq.end();
+                } catch (e) {}
 
                 console.log(`[Gateway] Registered live subpath: ${newSubpath} -> Port ${targetPort}`);
                 res.writeHead(200, { 'Content-Type': 'application/json' });

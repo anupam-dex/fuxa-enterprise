@@ -602,6 +602,99 @@ function startFuxa() {
             }
 
             if (settings.disableServer !== false) {
+                const bodyParser = require('body-parser');
+                app.use(bodyParser.json());
+
+                const handleCustomSubpath = (req, res) => {
+                    res.setHeader('Access-Control-Allow-Origin', '*');
+                    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+                    res.setHeader('Access-Control-Allow-Headers', '*');
+                    if (req.method === 'OPTIONS') return res.sendStatus(204);
+
+                    try {
+                        const newSub = '/' + (req.body.subpath || '').replace(/^\/+|\/+$/g, '');
+                        const currentPort = settings.serverPort || settings.uiPort;
+                        if (!newSub) return res.status(400).json({ error: 'Missing subpath' });
+
+                        const regFiles = [
+                            path.resolve(__dirname, '../../manager/registry.json'),
+                            path.resolve(__dirname, '../../instances/registry.json')
+                        ];
+
+                        for (const rf of regFiles) {
+                            try {
+                                let reg = { plants: {}, divisions: {}, instances: {} };
+                                if (fs.existsSync(rf)) {
+                                    reg = JSON.parse(fs.readFileSync(rf, 'utf8'));
+                                }
+                                reg.instances = reg.instances || {};
+                                let found = false;
+                                for (const [k, inst] of Object.entries(reg.instances)) {
+                                    if (inst.port === currentPort) {
+                                        inst.subpath = newSub;
+                                        inst.editor_url = `${newSub}/editor`;
+                                        inst.home_url = `${newSub}/home`;
+                                        if (req.body.name) {
+                                            inst.name = req.body.name;
+                                        }
+                                        found = true;
+                                        break;
+                                    }
+                                }
+                                if (!found) {
+                                    reg.instances[`port_${currentPort}`] = {
+                                        id: `port_${currentPort}`,
+                                        port: currentPort,
+                                        subpath: newSub,
+                                        name: req.body.name || `Custom Line (${newSub})`,
+                                        editor_url: `${newSub}/editor`,
+                                        home_url: `${newSub}/home`
+                                    };
+                                }
+                                if (!fs.existsSync(path.dirname(rf))) {
+                                    fs.mkdirSync(path.dirname(rf), { recursive: true });
+                                }
+                                fs.writeFileSync(rf, JSON.stringify(reg, null, 2));
+                            } catch (err) {}
+                        }
+
+                        // Notify Gateway (80) & Fleet Manager (9000)
+                        const http = require('http');
+                        const notifyServer = (targetPort, apiPath, postData) => {
+                            try {
+                                const dataStr = JSON.stringify(postData);
+                                const opt = {
+                                    hostname: '127.0.0.1',
+                                    port: targetPort,
+                                    path: apiPath,
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Content-Length': Buffer.byteLength(dataStr)
+                                    },
+                                    timeout: 1000
+                                };
+                                const r = http.request(opt, () => {});
+                                r.on('error', () => {});
+                                r.write(dataStr);
+                                r.end();
+                            } catch (e) {}
+                        };
+                        notifyServer(80, '/api/gateway/subpath', { subpath: newSub, port: currentPort });
+                        notifyServer(9000, '/api/update-subpath', { subpath: newSub, port: currentPort, name: req.body.name });
+
+                        logger.info(`[CustomURL] Saved subpath for port ${currentPort}: ${newSub}`);
+                        return res.json({ success: true, subpath: newSub, port: currentPort });
+                    } catch (e) {
+                        return res.status(500).json({ error: e.message });
+                    }
+                };
+
+                app.post('/api/custom-subpath', handleCustomSubpath);
+                if (BASE_PATH) {
+                    app.post(BASE_PATH + '/api/custom-subpath', handleCustomSubpath);
+                }
+
                 if (BASE_PATH) {
                     app.use(BASE_PATH + '/', FUXA.httpApi);
                 }
