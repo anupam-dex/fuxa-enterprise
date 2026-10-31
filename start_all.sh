@@ -16,6 +16,13 @@ if [ ! -f "$VENV_PYTHON" ]; then
     "$SCRIPT_DIR/venv/bin/pip" install --upgrade pip fastapi uvicorn asyncua psutil requests jinja2
 fi
 
+if [ ! -d "$SCRIPT_DIR/fuxa/server/node_modules" ]; then
+    echo "Installing FUXA server node modules..."
+    cd "$SCRIPT_DIR/fuxa/server"
+    npm install --omit=dev
+    cd "$SCRIPT_DIR"
+fi
+
 echo "=========================================================================="
 echo " 1. Starting FUXA Central Storage OPC-UA Bridge..."
 echo "    Endpoint: opc.tcp://0.0.0.0:4845/fuxa/server/"
