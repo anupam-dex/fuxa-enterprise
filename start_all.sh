@@ -13,8 +13,21 @@ VENV_PYTHON="$SCRIPT_DIR/venv/bin/python3"
 if [ ! -f "$VENV_PYTHON" ]; then
     echo "Creating Python virtualenv..."
     python3 -m venv "$SCRIPT_DIR/venv"
-    "$SCRIPT_DIR/venv/bin/pip" install --upgrade pip fastapi uvicorn asyncua psutil requests jinja2
+    "$SCRIPT_DIR/venv/bin/pip" install --upgrade pip fastapi uvicorn asyncua psutil requests jinja2 aiofiles
+else
+    "$SCRIPT_DIR/venv/bin/pip" install -q aiofiles 2>/dev/null || true
 fi
+
+# Stop system nginx if running on Port 80
+if command -v systemctl &>/dev/null && systemctl is-active --quiet nginx 2>/dev/null; then
+    echo "Notice: Freeing Port 80 (stopping conflicting system nginx)..."
+    systemctl stop nginx 2>/dev/null || true
+fi
+
+# Cleanup any previous lingering daemon processes
+pkill -f "uvicorn server:app" 2>/dev/null || true
+pkill -f "opcua_bridge.py" 2>/dev/null || true
+pkill -f "gateway.js" 2>/dev/null || true
 
 if [ ! -d "$SCRIPT_DIR/fuxa/server/node_modules" ]; then
     echo "Installing FUXA server node modules..."

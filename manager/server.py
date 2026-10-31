@@ -12,7 +12,7 @@ import subprocess
 import logging
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 
 from port_engine import PortEngine
@@ -213,9 +213,13 @@ static_dir = os.path.join(os.path.dirname(__file__), "static")
 os.makedirs(static_dir, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 def serve_index():
-    return FileResponse(os.path.join(static_dir, "index.html"))
+    index_file = os.path.join(static_dir, "index.html")
+    if os.path.exists(index_file):
+        with open(index_file, "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h3>FUXA Fleet Manager: index.html not found</h3>"
 
 if __name__ == "__main__":
     import uvicorn
