@@ -74,8 +74,12 @@ function findTarget(reqUrl) {
         return bestMatch;
     }
 
-    // Default route: route root / and /api/ to Fleet Manager
-    return { port: FLEET_MANAGER_PORT, prefix: '', name: 'FleetManager' };
+    // Only route root /, /static/, and manager /api/ to Fleet Manager
+    if (pathname === '/' || pathname.startsWith('/static/') || pathname.startsWith('/api/')) {
+        return { port: FLEET_MANAGER_PORT, prefix: '', name: 'FleetManager' };
+    }
+
+    return null;
 }
 
 // Create HTTP Gateway Server
@@ -83,8 +87,14 @@ const server = http.createServer((req, res) => {
     const target = findTarget(req.url);
 
     if (!target) {
-        res.writeHead(404, { 'Content-Type': 'text/plain' });
-        return res.end('SCADA Gateway: Route Not Found');
+        res.writeHead(404, { 'Content-Type': 'text/html' });
+        return res.end(`
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align:center; padding: 60px 20px; background: #0f172a; color: #f8fafc; min-height: 100vh; box-sizing: border-box;">
+                <h1 style="color: #38bdf8; font-size: 2rem; margin-bottom: 10px;">FUXA View Server Not Found</h1>
+                <p style="color: #94a3b8; font-size: 1.1rem; margin-bottom: 25px;">The requested Line route <code style="background:#1e293b; color:#f1f5f9; padding: 4px 8px; border-radius: 4px;">${req.url}</code> has not been deployed yet or is currently stopped.</p>
+                <a href="http://${req.headers.host ? req.headers.host.split(':')[0] : '127.0.0.1'}:9000" style="display: inline-block; background: #2563eb; color: white; padding: 10px 22px; border-radius: 6px; text-decoration: none; font-weight: 600;">Open Fleet Manager to Launch Line</a>
+            </div>
+        `);
     }
 
     // Proxy HTTP request
