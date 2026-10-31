@@ -463,7 +463,10 @@ app.use(allowCrossDomain);
 if (indexHtmlCache) {
     const serveShell = (req, res) => res.type('html').send(indexHtmlCache);
     for (const shellPath of SHELL_ROUTES) {
-        app.get(BASE_PATH + shellPath, serveShell);
+        if (BASE_PATH) {
+            app.get(BASE_PATH + shellPath, serveShell);
+        }
+        app.get(shellPath, serveShell);
     }
 }
 if (rewrittenAssets.size) {
@@ -474,7 +477,10 @@ if (rewrittenAssets.size) {
 }
 
 for (const shellPath of SHELL_ROUTES) {
-    app.use(BASE_PATH + shellPath, express.static(settings.httpStatic));
+    if (BASE_PATH) {
+        app.use(BASE_PATH + shellPath, express.static(settings.httpStatic));
+    }
+    app.use(shellPath, express.static(settings.httpStatic));
 }
 // while paths that have to serve non-angular paths are here
 app.use(BASE_PATH + '/' + settings.httpUploadFileStatic, express.static(settings.uploadFileDir));
@@ -596,7 +602,10 @@ function startFuxa() {
             }
 
             if (settings.disableServer !== false) {
-                app.use(BASE_PATH + '/', FUXA.httpApi);
+                if (BASE_PATH) {
+                    app.use(BASE_PATH + '/', FUXA.httpApi);
+                }
+                app.use('/', FUXA.httpApi);
             }
 
             server.listen(settings.uiPort, settings.uiHost, function () {
