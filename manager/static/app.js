@@ -35,7 +35,7 @@ function renderPlantGrid(matrix) {
                     <div class="instance-actions">
                         <a href="${window.location.protocol}//${window.location.hostname}:${inst.port}/editor" target="_blank" class="btn btn-primary btn-sm">Editor</a>
                         <a href="${window.location.protocol}//${window.location.hostname}:${inst.port}/home" target="_blank" class="btn btn-secondary btn-sm">View</a>
-                        <a href="${inst.subpath}/editor" target="_blank" title="Open via OT Gateway URL" class="btn btn-secondary btn-sm">OT Link</a>
+                        <a href="${window.location.protocol}//${window.location.hostname}${inst.subpath}/editor" target="_blank" title="Open via OT Gateway (Port 80)" class="btn btn-secondary btn-sm">OT Link</a>
                         <button onclick="viewLogs('${inst.id}')" class="btn btn-secondary btn-sm" title="View Live Logs & Alarms">Logs</button>
                         <button onclick="deleteInstance('${inst.id}')" class="btn btn-danger btn-sm">&#128465;</button>
                     </div>

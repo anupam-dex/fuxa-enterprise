@@ -110,17 +110,22 @@ def create_project(req: CreateProjectRequest):
 
 def _launch_fuxa_instance(instance_id: str, port: int, work_dir: str, subpath: str):
     """Starts the FUXA instance process with BASE_PATH and userDir"""
+    # Normalize work_dir to local machine
+    if not os.path.exists(work_dir):
+        work_dir = os.path.join(INSTANCES_DIR, f"port_{port}")
+    os.makedirs(work_dir, exist_ok=True)
+
     env = os.environ.copy()
     env["BASE_PATH"] = subpath
     env["NODE_OPTIONS"] = "--max-old-space-size=4096"
 
-    # Try node on host
-    node_cmd = "node"
-    cmd = [node_cmd, FUXA_SERVER_PATH, "--port", str(port), "--userDir", work_dir]
+    fuxa_server_dir = os.path.dirname(FUXA_SERVER_PATH)
+    cmd = ["node", FUXA_SERVER_PATH, "--port", str(port), "--userDir", work_dir]
 
     try:
         proc = subprocess.Popen(
             cmd,
+            cwd=fuxa_server_dir,
             env=env,
             stdout=open(os.path.join(work_dir, "fuxa.log"), "a"),
             stderr=subprocess.STDOUT

@@ -31,20 +31,5 @@
     "7": "Robotics & Automation",
     "8": "Material Handling"
   },
-  "instances": {
-    "fuxa_p9_d6_l1_9610": {
-      "id": "fuxa_p9_d6_l1_9610",
-      "name": "Paintshop Oven Line 1",
-      "plant": 9,
-      "division": 6,
-      "line": 1,
-      "port": 9610,
-      "subpath": "/p9/div6/l1",
-      "work_dir": "/Users/mcdex/.gemini/antigravity/scratch/fuxa-fleet-manager/instances/port_9610",
-      "pid": null,
-      "status": "STOPPED",
-      "editor_url": "/p9/div6/l1/editor",
-      "home_url": "/p9/div6/l1/home"
-    }
-  }
+  "instances": {}
 }
