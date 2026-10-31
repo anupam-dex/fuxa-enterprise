@@ -92,6 +92,16 @@ function findTarget(reqUrl) {
 
 // Create HTTP Gateway Server
 const server = http.createServer((req, res) => {
+    // Enable full CORS for all gateway operations & preflight
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', '*');
+
+    if (req.method === 'OPTIONS') {
+        res.writeHead(204);
+        return res.end();
+    }
+
     // 1. Dynamic Subpath Update API (called by FUXA UI to change custom URLs live)
     if (req.method === 'POST' && req.url === '/api/gateway/subpath') {
         let body = '';

@@ -79,6 +79,44 @@ class CreateProjectRequest(BaseModel):
     line: int
     project_name: str
 
+class UpdateSubpathRequest(BaseModel):
+    port: int
+    subpath: str
+    name: str = None
+
+@app.post("/api/update-subpath")
+def update_subpath(req: UpdateSubpathRequest):
+    new_sub = "/" + req.subpath.strip("/")
+    instances = port_engine.get_all_instances()
+    found = False
+    for inst_id, inst in instances.items():
+        if inst.get("port") == req.port:
+            inst["subpath"] = new_sub
+            inst["editor_url"] = f"{new_sub}/editor"
+            inst["home_url"] = f"{new_sub}/home"
+            if req.name:
+                inst["name"] = req.name
+            port_engine.register_instance(inst_id, inst)
+            found = True
+            break
+    return {"success": True, "subpath": new_sub, "found": found}
+
+@app.post("/api/instances/{instance_id}/rename")
+def rename_instance(instance_id: str, req: dict):
+    instances = port_engine.get_all_instances()
+    if instance_id not in instances:
+        raise HTTPException(status_code=404, detail="Instance not found")
+    inst = instances[instance_id]
+    if "name" in req and req["name"]:
+        inst["name"] = req["name"]
+    if "subpath" in req and req["subpath"]:
+        new_sub = "/" + req["subpath"].strip("/")
+        inst["subpath"] = new_sub
+        inst["editor_url"] = f"{new_sub}/editor"
+        inst["home_url"] = f"{new_sub}/home"
+    port_engine.register_instance(instance_id, inst)
+    return {"success": True, "instance": inst}
+
 @app.get("/api/matrix")
 def get_matrix():
     """Returns visual port map & status of all plants and assigned instances"""

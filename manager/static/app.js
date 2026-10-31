@@ -36,6 +36,7 @@ function renderPlantGrid(matrix) {
                         <a href="${window.location.protocol}//${window.location.hostname}:${inst.port}/editor" target="_blank" class="btn btn-primary btn-sm">Editor</a>
                         <a href="${window.location.protocol}//${window.location.hostname}:${inst.port}/home" target="_blank" class="btn btn-secondary btn-sm">View</a>
                         <a href="${window.location.protocol}//${window.location.hostname}${inst.subpath}/editor" target="_blank" title="Open via OT Gateway (Port 80)" class="btn btn-secondary btn-sm">OT Link</a>
+                        <button onclick="editInstance('${inst.id}', '${inst.name.replace(/'/g, "\\'")}', '${inst.subpath}')" class="btn btn-secondary btn-sm" title="Edit Name & Subpath">✏️ Edit</button>
                         <button onclick="viewLogs('${inst.id}')" class="btn btn-secondary btn-sm" title="View Live Logs & Alarms">Logs</button>
                         <button onclick="deleteInstance('${inst.id}')" class="btn btn-danger btn-sm">&#128465;</button>
                     </div>
@@ -128,6 +129,24 @@ async function deleteInstance(id) {
     if (confirm(`Are you sure you want to delete instance ${id}?`)) {
         await fetch(`/api/instances/${id}`, { method: 'DELETE' });
         loadMatrix();
+    }
+}
+
+async function editInstance(id, currentName, currentSubpath) {
+    const newName = prompt('Enter new Project Name:', currentName);
+    if (newName === null) return;
+    const newSubpath = prompt('Enter Custom Subpath (e.g. /p9/ps/ems):', currentSubpath);
+    if (newSubpath === null) return;
+
+    try {
+        await fetch(`/api/instances/${id}/rename`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: newName.trim(), subpath: newSubpath.trim() })
+        });
+        loadMatrix();
+    } catch (e) {
+        alert('Failed to update: ' + e.message);
     }
 }
 

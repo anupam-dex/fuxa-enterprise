@@ -31,16 +31,33 @@
 
     async function syncSubpathToGateway(newSubpath) {
         const port = getTargetPort();
+        const host = window.location.hostname || '127.0.0.1';
+        const payload = JSON.stringify({ subpath: newSubpath, port: port });
+
+        // Update Gateway (Port 80)
         try {
-            const gatewayUrl = `${window.location.protocol}//${window.location.hostname}${window.location.port === '80' || !window.location.port ? '' : ':80'}/api/gateway/subpath`;
-            await fetch(gatewayUrl, {
+            await fetch(`http://${host}/api/gateway/subpath`, {
                 method: 'POST',
+                mode: 'cors',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ subpath: newSubpath, port: port })
+                body: payload
             });
-            console.log(`[FUXA-Gateway] Registered route: ${newSubpath} -> Port ${port}`);
+            console.log(`[FUXA-Gateway] Registered route on Port 80: ${newSubpath} -> Port ${port}`);
         } catch (e) {
-            console.warn('[FUXA-Gateway] Could not sync subpath to gateway:', e);
+            console.warn('[FUXA-Gateway] Gateway sync warning:', e);
+        }
+
+        // Update Fleet Manager (Port 9000)
+        try {
+            await fetch(`http://${host}:9000/api/update-subpath`, {
+                method: 'POST',
+                mode: 'cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: payload
+            });
+            console.log(`[FUXA-Manager] Registered route on Port 9000: ${newSubpath} -> Port ${port}`);
+        } catch (e) {
+            console.warn('[FUXA-Manager] Manager sync warning:', e);
         }
     }
 
