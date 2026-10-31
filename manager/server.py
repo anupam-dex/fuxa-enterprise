@@ -213,6 +213,25 @@ def get_instance_logs(instance_id: str, lines: int = 100):
         "errors": errs
     }
 
+@app.post("/api/build-client")
+def build_client():
+    client_dir = os.path.join(BASE_DIR, "fuxa", "client")
+    try:
+        res = subprocess.run(
+            ["npm", "run", "build"],
+            cwd=client_dir,
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        return {
+            "success": res.returncode == 0,
+            "stdout": res.stdout[-1000:],
+            "stderr": res.stderr[-1000:]
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 # Static file serving for the Manager UI
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 os.makedirs(static_dir, exist_ok=True)
