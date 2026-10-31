@@ -62,6 +62,13 @@ echo " • Central Gateway: http://localhost:$GATEWAY_PORT"
 echo " • Fleet Manager:   http://localhost:9000"
 echo " • OPC-UA Bridge:   opc.tcp://localhost:4845/fuxa/server/"
 echo "=========================================================================="
+echo "💡 To view live terminal logs and alarms: ./logs.sh"
+echo "💡 To filter only errors: ./logs.sh errors"
+echo "=========================================================================="
 
-trap "kill $BRIDGE_PID $MANAGER_PID $GATEWAY_PID 2>/dev/null || true; exit 0" INT TERM
-wait
+if [ "$1" = "--live" ] || [ "$1" = "--logs" ] || [ "$1" = "-f" ]; then
+    "$SCRIPT_DIR/logs.sh"
+else
+    trap "kill $BRIDGE_PID $MANAGER_PID $GATEWAY_PID 2>/dev/null || true; exit 0" INT TERM
+    wait
+fi

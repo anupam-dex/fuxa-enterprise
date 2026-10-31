@@ -36,6 +36,7 @@ function renderPlantGrid(matrix) {
                         <a href="${window.location.protocol}//${window.location.hostname}:${inst.port}/editor" target="_blank" class="btn btn-primary btn-sm">Editor</a>
                         <a href="${window.location.protocol}//${window.location.hostname}:${inst.port}/home" target="_blank" class="btn btn-secondary btn-sm">View</a>
                         <a href="${inst.subpath}/editor" target="_blank" title="Open via OT Gateway URL" class="btn btn-secondary btn-sm">OT Link</a>
+                        <button onclick="viewLogs('${inst.id}')" class="btn btn-secondary btn-sm" title="View Live Logs & Alarms">Logs</button>
                         <button onclick="deleteInstance('${inst.id}')" class="btn btn-danger btn-sm">&#128465;</button>
                     </div>
                 </div>
@@ -128,6 +129,39 @@ async function deleteInstance(id) {
         await fetch(`/api/instances/${id}`, { method: 'DELETE' });
         loadMatrix();
     }
+}
+
+async function viewLogs(id) {
+    const modal = document.getElementById('logs-modal');
+    const content = document.getElementById('logs-content');
+    const title = document.getElementById('logs-title');
+    if (!modal) return;
+    
+    title.textContent = `Live Logs: ${id}`;
+    content.textContent = 'Fetching latest logs and alarms...';
+    modal.classList.add('active');
+
+    try {
+        const res = await fetch(`/api/instances/${id}/logs?lines=150`);
+        const data = await res.json();
+        const allLogs = (data.logs || []).join('');
+        const allErrs = (data.errors || []).join('');
+        
+        let display = '';
+        if (allErrs) {
+            display += `=== RECENT EXCEPTIONS / ERRORS ===\n${allErrs}\n\n`;
+        }
+        display += `=== RUNTIME LOGS & ALARMS ===\n${allLogs || 'No log entries recorded yet.'}`;
+        content.textContent = display;
+        content.scrollTop = content.scrollHeight;
+    } catch (e) {
+        content.textContent = 'Failed to load logs: ' + e.message;
+    }
+}
+
+function closeLogsModal() {
+    const modal = document.getElementById('logs-modal');
+    if (modal) modal.classList.remove('active');
 }
 
 // Initial load

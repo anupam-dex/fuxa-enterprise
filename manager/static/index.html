@@ -122,6 +122,22 @@
         </div>
     </div>
 
+    <!-- Live Logs & Alarms Modal -->
+    <div id="logs-modal" class="modal-backdrop">
+        <div class="modal-box" style="max-width: 900px; width: 90%;">
+            <div class="modal-header">
+                <h3 id="logs-title">Live Logs & Alarms</h3>
+                <button class="btn-close" onclick="closeLogsModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 10px 24px;">
+                <pre id="logs-content" style="background: #0f172a; color: #38bdf8; padding: 15px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; max-height: 450px; overflow-y: auto; white-space: pre-wrap; line-height: 1.4; border: 1px solid #334155;"></pre>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeLogsModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/app.js"></script>
 </body>
 </html>

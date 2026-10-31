@@ -176,6 +176,38 @@ def delete_instance(instance_id: str):
     port_engine.unregister_instance(instance_id)
     return {"success": True}
 
+@app.get("/api/instances/{instance_id}/logs")
+def get_instance_logs(instance_id: str, lines: int = 100):
+    instances = port_engine.get_all_instances()
+    if instance_id not in instances:
+        raise HTTPException(status_code=404, detail="Instance not found")
+
+    work_dir = instances[instance_id]["work_dir"]
+    log_file = os.path.join(work_dir, "fuxa.log")
+    err_file = os.path.join(work_dir, "fuxa-err.log")
+
+    logs = []
+    if os.path.exists(log_file):
+        try:
+            with open(log_file, "r", errors="ignore") as f:
+                logs = f.readlines()[-lines:]
+        except Exception as e:
+            logs = [f"Error reading log file: {e}"]
+
+    errs = []
+    if os.path.exists(err_file):
+        try:
+            with open(err_file, "r", errors="ignore") as f:
+                errs = f.readlines()[-lines:]
+        except Exception:
+            pass
+
+    return {
+        "instance_id": instance_id,
+        "logs": logs,
+        "errors": errs
+    }
+
 # Static file serving for the Manager UI
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 os.makedirs(static_dir, exist_ok=True)
