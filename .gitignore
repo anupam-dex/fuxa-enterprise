@@ -1,0 +1,8 @@
+# FUXA Fleet Manager Ignore Rules
+venv/
+node_modules/
+instances/
+*.db
+*.sqlite*
+*.log
+.DS_Store

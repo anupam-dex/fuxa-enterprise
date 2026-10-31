@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FUXA Fleet Manager | SCADA Orchestrator</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="top-nav">
+        <div class="brand">
+            <div class="logo-badge">FUXA</div>
+            <div>
+                <h1>SCADA Fleet Orchestrator</h1>
+                <p class="subtitle">Multi-Plant Visual Port Manager & Central OPC-UA Bridge</p>
+            </div>
+        </div>
+        <div class="header-stats">
+            <div class="stat-pill">
+                <span class="dot live"></span>
+                <span>OPC-UA Bridge: <strong>opc.tcp://127.0.0.1:4840</strong></span>
+            </div>
+            <div class="stat-pill">
+                <span>Active Plants: <strong id="stat-plants">5</strong></span>
+            </div>
+            <button class="btn btn-primary" onclick="openCreateModal()">+ Create New Project</button>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Visual Matrix Section -->
+        <section class="section-card">
+            <div class="section-header">
+                <h2>Visual Port & Plant Topology</h2>
+                <div class="legend">
+                    <span class="legend-item"><span class="badge badge-storage">STORAGE (PLCs)</span> Master Collector</span>
+                    <span class="legend-item"><span class="badge badge-view">VIEW (HMI)</span> OPC-UA Consumer</span>
+                </div>
+            </div>
+
+            <div id="plant-grid" class="plant-grid">
+                <!-- Dynamically populated plant cards -->
+            </div>
+        </section>
+    </main>
+
+    <!-- Create Project Wizard Modal -->
+    <div id="create-modal" class="modal-backdrop">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>Create New HMI View Instance</h3>
+                <button class="btn-close" onclick="closeCreateModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-desc">
+                    Configures an isolated FUXA view server on a calculated port. 
+                    <strong>No PLCs will be connected directly.</strong> All tags will be browsable via the Central OPC-UA Bridge.
+                </p>
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="sel-plant">Target Plant</label>
+                        <select id="sel-plant" onchange="updatePortPreview()">
+                            <option value="9">Plant 9 - Paintshop Complex</option>
+                            <option value="1">Plant 1 - Foundry & Powerhouse</option>
+                            <option value="2">Plant 2 - Stamping & Press</option>
+                            <option value="3">Plant 3 - Body & Assembly</option>
+                            <option value="4">Plant 4 - Powertrain & Engine</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="sel-div">Division / Location</label>
+                        <select id="sel-div" onchange="updatePortPreview()">
+                            <option value="6">Paintshop (6)</option>
+                            <option value="1">Body Shop (1)</option>
+                            <option value="2">Stamping (2)</option>
+                            <option value="3">Assembly (3)</option>
+                            <option value="4">Quality & Inspection (4)</option>
+                            <option value="5">Utility & Boiler (5)</option>
+                            <option value="7">Robotics (7)</option>
+                            <option value="8">Material Handling (8)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="input-line">Sub-Location / Line Number</label>
+                        <input type="number" id="input-line" value="1" min="1" max="9" oninput="updatePortPreview()">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="input-name">Project Title</label>
+                        <input type="text" id="input-name" placeholder="e.g. Paintshop Oven Line 1">
+                    </div>
+                </div>
+
+                <div class="port-preview-box">
+                    <div class="port-formula">
+                        <span>Determined Port Formula:</span>
+                        <code>Plant(<span id="p-calc-plant">9</span>) + Div(<span id="p-calc-div">6</span>) + Line(<span id="p-calc-line">1</span>) + Index(0)</code>
+                    </div>
+                    <div class="port-result">
+                        <span>Assigned Port:</span>
+                        <div class="port-chip" id="p-calc-result">9610</div>
+                    </div>
+                </div>
+
+                <div class="features-list">
+                    <div class="feat-item">&#10003; Automatic OPC-UA Connection Pre-loaded</div>
+                    <div class="feat-item">&#10003; Historical InfluxDB logging stripped</div>
+                    <div class="feat-item">&#10003; Zero PLC direct connections</div>
+                    <div class="feat-item">&#10003; Nginx Subpath: <code id="subpath-preview">/p9/div6/l1</code></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeCreateModal()">Cancel</button>
+                <button class="btn btn-primary" id="btn-submit" onclick="submitCreateProject()">Launch View Server</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

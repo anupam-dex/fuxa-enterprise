@@ -1,0 +1,30 @@
+export class Plugin {
+    name: string;
+    type: PluginType | PluginGroupType;
+    version: string;
+    current: string;
+    status: string;
+    pkg: boolean;
+    dinamic: boolean;
+    group: string;
+    canRemove: boolean;
+}
+
+export enum PluginType {
+    OPCUA = 'OPCUA',
+    BACnet = 'BACnet',
+    Modbus = 'Modbus',
+    Raspberry = 'Raspberry',
+    SiemensS7 = 'SiemensS7',
+    EthernetIP = 'EthernetIP',
+    GenericEthernetIP = 'GenericEthernetIP',
+    OmronEthernetIP = 'OmronEthernetIP',
+    MELSEC = 'MELSEC',
+    REDIS = 'REDIS',
+    SNMP = 'SNMP'
+}
+
+export enum PluginGroupType {
+    Chart = 'Chart',
+    Service = 'Service'
+}

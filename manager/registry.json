@@ -1,0 +1,50 @@
+{
+  "plants": {
+    "1": {
+      "name": "Plant 1 - Foundry & Powerhouse",
+      "storage_port": 5100
+    },
+    "2": {
+      "name": "Plant 2 - Stamping & Press",
+      "storage_port": 5200
+    },
+    "3": {
+      "name": "Plant 3 - Body & Assembly",
+      "storage_port": 5300
+    },
+    "4": {
+      "name": "Plant 4 - Powertrain & Engine",
+      "storage_port": 5400
+    },
+    "9": {
+      "name": "Plant 9 - Paintshop Complex",
+      "storage_port": 5900
+    }
+  },
+  "divisions": {
+    "1": "Body Shop",
+    "2": "Stamping",
+    "3": "Assembly",
+    "4": "Quality & Inspection",
+    "5": "Utility & Boiler",
+    "6": "Paintshop",
+    "7": "Robotics & Automation",
+    "8": "Material Handling"
+  },
+  "instances": {
+    "fuxa_p9_d6_l1_9610": {
+      "id": "fuxa_p9_d6_l1_9610",
+      "name": "Paintshop Oven Line 1",
+      "plant": 9,
+      "division": 6,
+      "line": 1,
+      "port": 9610,
+      "subpath": "/p9/div6/l1",
+      "work_dir": "/Users/mcdex/.gemini/antigravity/scratch/fuxa-fleet-manager/instances/port_9610",
+      "pid": null,
+      "status": "STOPPED",
+      "editor_url": "/p9/div6/l1/editor",
+      "home_url": "/p9/div6/l1/home"
+    }
+  }
+}
