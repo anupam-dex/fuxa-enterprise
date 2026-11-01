@@ -150,13 +150,20 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="input-name">Project Title</label>
-                        <input type="text" id="input-name" placeholder="e.g. Paintshop Oven Line 1">
+                        <label for="input-name">Project Name</label>
+                        <input type="text" id="input-name" placeholder="e.g. EMS, Paintshop Oven Line 1">
                     </div>
 
                     <div class="form-group">
                         <label for="input-subpath">Custom OT URL / Subpath (Port 80)</label>
                         <input type="text" id="input-subpath" placeholder="e.g. /p9/ps/ems" value="/p9/div6/l1" style="font-family: monospace;">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="input-custom-port">Server Port Number</label>
+                        <input type="number" id="input-custom-port" value="9610" min="1024" max="65535"
+                               style="font-family: monospace; font-weight: 600;"
+                               title="Calculated from formula or enter custom port">
                     </div>
                 </div>
 
@@ -166,10 +173,8 @@
                         <code>Plant(<span id="p-calc-plant">9</span>) + Div(<span id="p-calc-div">6</span>) + Line(<span id="p-calc-line">1</span>) + Index(0)</code>
                     </div>
                     <div class="port-result">
-                        <span>Assigned Port:</span>
-                        <input type="number" id="input-custom-port" value="9610" min="1024" max="65535"
-                               style="width: 100px; text-align: center; font-weight: bold; font-family: monospace; font-size: 1.1rem; background: #0d121c; color: #38bdf8; border: 1px solid #0284c7; border-radius: 4px; padding: 4px;"
-                               title="Auto-calculated from formula, or enter custom port number (e.g. 9621, 9622)">
+                        <span style="font-size: 0.8rem; color: var(--text-muted);">Status:</span>
+                        <span style="font-family: var(--font-mono); color: var(--accent-cyan); font-weight: 600; font-size: 0.9rem;">Auto-Assigned</span>
                     </div>
                 </div>
 
@@ -229,14 +234,20 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="edit-input-name">Project Title / Line Name</label>
-                        <input type="text" id="edit-input-name" placeholder="e.g. Paintshop Oven Line 1">
+                        <label for="edit-input-name">Project Name</label>
+                        <input type="text" id="edit-input-name" placeholder="e.g. EMS, Paintshop Oven Line 1">
                     </div>
 
                     <div class="form-group">
                         <label for="edit-input-subpath">Custom OT URL / Subpath (Port 80)</label>
                         <input type="text" id="edit-input-subpath" placeholder="e.g. /p9/ps/ems" style="font-family: monospace;">
-                        <small style="color: #94a3b8; display:block; margin-top: 5px;">Port 80 clean reverse proxy path for this server.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="edit-input-port">Server Port Number</label>
+                        <input type="number" id="edit-input-port" value="9610" min="1024" max="65535"
+                               style="font-family: monospace; font-weight: 600;"
+                               title="Port number for this view server">
                     </div>
                 </div>
 
@@ -246,10 +257,8 @@
                         <code>Port: <span id="edit-port-calc-result">9610</span></code>
                     </div>
                     <div class="port-result">
-                        <span>Server Port:</span>
-                        <input type="number" id="edit-input-port" value="9610" min="1024" max="65535"
-                               style="width: 100px; text-align: center; font-weight: bold; font-family: monospace; font-size: 1.1rem; background: #0d121c; color: #38bdf8; border: 1px solid #334155; border-radius: 4px; padding: 4px;"
-                               title="Port number for this view server">
+                        <span style="font-size: 0.8rem; color: var(--text-muted);">Status:</span>
+                        <span style="font-family: var(--font-mono); color: var(--accent-cyan); font-weight: 600; font-size: 0.9rem;">Configured</span>
                     </div>
                 </div>
             </div>

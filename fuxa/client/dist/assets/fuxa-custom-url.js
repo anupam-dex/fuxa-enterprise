@@ -110,6 +110,14 @@
         });
     }
 
+    function getProjectName() {
+        const headerTitle = document.querySelector('.header-title, .project-name, app-header .title, .header-left .title');
+        if (headerTitle && headerTitle.textContent) {
+            return headerTitle.textContent.trim();
+        }
+        return localStorage.getItem('fuxa_project_name') || 'EMS';
+    }
+
     // Observe Settings Dialog (⚙️) to inject Custom Subpath & Page URLs card
     function observeSettingsDialog() {
         removeHeaderPageUrlButton();
@@ -126,12 +134,22 @@
                         customDiv.style.cssText = 'width: 320px;';
                         
                         const currentSubpath = getBasePath();
+                        const currentProjectName = getProjectName();
                         const hostUrl = getHostUrl();
                         const viewName = getCurrentViewName();
                         const fullViewUrl = viewName ? `${hostUrl}${currentSubpath}/home/${viewName}` : `${hostUrl}${currentSubpath}/home`;
                         const fullEditorUrl = `${hostUrl}${currentSubpath}/editor`;
 
                         customDiv.innerHTML = `
+                            <!-- Project Name Setting -->
+                            <div class="my-form-field block mt15 system-input">
+                                <span>Project Name</span>
+                                <div style="display: flex; gap: 6px; align-items: center; width: 320px;">
+                                    <input id="fuxa-project-name-input" type="text" value="${currentProjectName}" placeholder="e.g. EMS" 
+                                           style="flex: 1; height: 32px; padding: 4px 8px; font-size: 13px; font-family: inherit; border: none; border-radius: 2px; background-color: var(--formInputBackground, rgba(255,255,255,0.06)); color: var(--formInputColor, inherit); box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important; cursor: text !important;" />
+                                </div>
+                            </div>
+
                             <!-- Custom URL / Subpath Setting -->
                             <div class="my-form-field block mt15 system-input">
                                 <span>Custom URL / Subpath</span>
@@ -181,6 +199,7 @@
                         // Attach event listeners
                         const saveBtn = customDiv.querySelector('#fuxa-subpath-save-btn');
                         const input = customDiv.querySelector('#fuxa-subpath-input');
+                        const nameInput = customDiv.querySelector('#fuxa-project-name-input');
                         const viewInput = customDiv.querySelector('#fuxa-view-url-text');
                         const editorInput = customDiv.querySelector('#fuxa-editor-url-text');
                         const openLink = customDiv.querySelector('#fuxa-link-open-view');
@@ -189,15 +208,10 @@
 
                         // Stop FUXA / SVG editor from intercepting keystrokes and clicks
                         ['keydown', 'keyup', 'keypress', 'input', 'mousedown', 'pointerdown'].forEach(evt => {
-                            input.addEventListener(evt, (e) => {
-                                e.stopPropagation();
-                            }, true);
-                            viewInput.addEventListener(evt, (e) => {
-                                e.stopPropagation();
-                            }, true);
-                            editorInput.addEventListener(evt, (e) => {
-                                e.stopPropagation();
-                            }, true);
+                            input.addEventListener(evt, (e) => e.stopPropagation(), true);
+                            if (nameInput) nameInput.addEventListener(evt, (e) => e.stopPropagation(), true);
+                            viewInput.addEventListener(evt, (e) => e.stopPropagation(), true);
+                            editorInput.addEventListener(evt, (e) => e.stopPropagation(), true);
                         });
 
                         input.addEventListener('click', (e) => {
@@ -205,8 +219,18 @@
                             input.focus();
                         });
 
+                        if (nameInput) {
+                            nameInput.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                nameInput.focus();
+                            });
+                        }
+
                         saveBtn.addEventListener('click', async () => {
                             const val = input.value.trim();
+                            const updatedName = nameInput ? nameInput.value.trim() : '';
+                            if (updatedName) localStorage.setItem('fuxa_project_name', updatedName);
+
                             if (val) {
                                 const clean = setBasePath(val);
                                 saveBtn.textContent = 'Applying...';
@@ -214,7 +238,7 @@
                                 const detectedPort = parseInt(portInput.value, 10) || getTargetPort();
                                 localStorage.setItem('fuxa_target_port', detectedPort);
                                 
-                                await syncSubpathToGateway(clean, detectedPort);
+                                await syncSubpathToGateway(clean, detectedPort, updatedName);
                                 
                                 const updatedViewUrl = viewName ? `${hostUrl}${clean}/home/${viewName}` : `${hostUrl}${clean}/home`;
                                 const updatedEditorUrl = `${hostUrl}${clean}/editor`;
