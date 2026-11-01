@@ -123,9 +123,9 @@ function renderInstancesList() {
         const row = document.createElement('div');
         row.className = 'instance-card-row';
 
-        const directEditor = `${proto}//${host}:${inst.port}/editor`;
-        const directView = `${proto}//${host}:${inst.port}/home`;
-        const otLink = `${proto}//${host}${inst.subpath}/editor`;
+        // OT Clean URLs without port numbers (Port 80 Reverse Proxy)
+        const otEditor = `${proto}//${host}${inst.subpath}/editor`;
+        const otView = `${proto}//${host}${inst.subpath}/view`;
 
         row.innerHTML = `
             <!-- Col 1: Server Identity & Plant -->
@@ -139,7 +139,7 @@ function renderInstancesList() {
 
             <!-- Col 2: Ports & Subpath -->
             <div class="col-routing">
-                <div class="port-badge">Port: ${inst.port}</div>
+                <div class="port-badge" title="Internal backend process port">Port: ${inst.port}</div>
                 <div class="subpath-badge">${inst.subpath}</div>
             </div>
 
@@ -152,15 +152,15 @@ function renderInstancesList() {
 
             <!-- Col 4: OT Port 80 Clean Reverse Proxy Link -->
             <div class="col-ot-link">
-                <a href="${otLink}" target="_blank" class="ot-link-pill" title="Open via OT Reverse Proxy (Port 80)">
-                    <span>🌐</span> ${inst.subpath}/editor
+                <a href="${otView}" target="_blank" class="ot-link-pill" title="Open Clean OT View (Port 80 - No Port Number)">
+                    <span>🌐</span> ${inst.subpath}/view
                 </a>
             </div>
 
             <!-- Col 5: Actions -->
             <div class="col-actions">
-                <a href="${directEditor}" target="_blank" class="btn btn-primary btn-sm" title="Open Editor">Editor</a>
-                <a href="${directView}" target="_blank" class="btn btn-secondary btn-sm" title="Open Operator View">View</a>
+                <a href="${otEditor}" target="_blank" class="btn btn-primary btn-sm" title="Open Editor (Port 80 - No Port Number)">Editor</a>
+                <a href="${otView}" target="_blank" class="btn btn-secondary btn-sm" title="Open Operator View (Port 80 - No Port Number)">View</a>
                 <button onclick="syncTags('${inst.id}')" class="btn btn-secondary btn-sm" title="Sync Plant Storage Tags into this View Server">🔄 Sync Tags</button>
                 <button onclick="editInstance('${inst.id}')" class="btn btn-secondary btn-sm" title="Edit View Server">✏️ Edit</button>
                 <button onclick="viewLogs('${inst.id}')" class="btn btn-secondary btn-sm" title="View Logs">Logs</button>
