@@ -658,6 +658,32 @@ function startFuxa() {
                             } catch (err) {}
                         }
 
+                        // Persist project name directly in SQLite database
+                        if (req.body.name) {
+                            try {
+                                const dbFile = path.join(settings.workDir, 'project.fuxap.db');
+                                if (fs.existsSync(dbFile)) {
+                                    const sqlite3 = require('sqlite3').verbose();
+                                    const db = new sqlite3.Database(dbFile);
+                                    db.serialize(() => {
+                                        db.run("INSERT OR REPLACE INTO general (name, value) VALUES (?, ?);", ['name', JSON.stringify(req.body.name)]);
+                                        db.get("SELECT value FROM general WHERE name = 'general';", (err, row) => {
+                                            if (row && row.value) {
+                                                try {
+                                                    const g = JSON.parse(row.value);
+                                                    g.title = req.body.name;
+                                                    if (g.header) g.header.title = req.body.name;
+                                                    db.run("UPDATE general SET value = ? WHERE name = 'general';", [JSON.stringify(g)]);
+                                                } catch (e) {}
+                                            }
+                                        });
+                                    });
+                                    db.close();
+                                    logger.info(`[FUXA-Database] Updated project name to "${req.body.name}" in ${dbFile}`);
+                                }
+                            } catch (e) {}
+                        }
+
                         // Notify Gateway (80) & Fleet Manager (9000)
                         const http = require('http');
                         const notifyServer = (targetPort, apiPath, postData) => {
@@ -680,7 +706,7 @@ function startFuxa() {
                                 r.end();
                             } catch (e) {}
                         };
-                        notifyServer(80, '/api/gateway/subpath', { subpath: newSub, port: currentPort });
+                        notifyServer(80, '/api/gateway/subpath', { subpath: newSub, port: currentPort, name: req.body.name });
                         notifyServer(9000, '/api/update-subpath', { subpath: newSub, port: currentPort, name: req.body.name });
 
                         logger.info(`[CustomURL] Saved subpath for port ${currentPort}: ${newSub}`);
@@ -689,6 +715,114 @@ function startFuxa() {
                         return res.status(500).json({ error: e.message });
                     }
                 };
+
+                const handleProjectName = (req, res) => {
+                    res.setHeader('Access-Control-Allow-Origin', '*');
+                    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+                    res.setHeader('Access-Control-Allow-Headers', '*');
+                    if (req.method === 'OPTIONS') return res.sendStatus(204);
+
+                    const currentPort = settings.serverPort || settings.uiPort;
+
+                    if (req.method === 'GET') {
+                        let pName = 'EMS';
+                        try {
+                            const dbFile = path.join(settings.workDir, 'project.fuxap.db');
+                            if (fs.existsSync(dbFile)) {
+                                const sqlite3 = require('sqlite3').verbose();
+                                const db = new sqlite3.Database(dbFile);
+                                db.get("SELECT value FROM general WHERE name = 'name';", (err, row) => {
+                                    if (row && row.value) {
+                                        try { pName = JSON.parse(row.value); } catch (_) { pName = row.value; }
+                                    }
+                                    db.close();
+                                    return res.json({ name: pName, port: currentPort });
+                                });
+                                return;
+                            }
+                        } catch (_) {}
+                        return res.json({ name: pName, port: currentPort });
+                    }
+
+                    const newName = (req.body.name || '').trim();
+                    if (!newName) return res.status(400).json({ error: 'Missing name' });
+
+                    try {
+                        const dbFile = path.join(settings.workDir, 'project.fuxap.db');
+                        if (fs.existsSync(dbFile)) {
+                            const sqlite3 = require('sqlite3').verbose();
+                            const db = new sqlite3.Database(dbFile);
+                            db.serialize(() => {
+                                db.run("INSERT OR REPLACE INTO general (name, value) VALUES (?, ?);", ['name', JSON.stringify(newName)]);
+                                db.get("SELECT value FROM general WHERE name = 'general';", (err, row) => {
+                                    if (row && row.value) {
+                                        try {
+                                            const g = JSON.parse(row.value);
+                                            g.title = newName;
+                                            if (g.header) g.header.title = newName;
+                                            db.run("UPDATE general SET value = ? WHERE name = 'general';", [JSON.stringify(g)]);
+                                        } catch (e) {}
+                                    }
+                                });
+                            });
+                            db.close();
+                            logger.info(`[FUXA-Database] Updated project name to "${newName}" in ${dbFile}`);
+                        }
+                    } catch (e) {}
+
+                    // Update registry files
+                    const regFiles = [
+                        path.resolve(__dirname, '../../manager/registry.json'),
+                        path.resolve(__dirname, '../../instances/registry.json')
+                    ];
+                    for (const rf of regFiles) {
+                        try {
+                            if (fs.existsSync(rf)) {
+                                let reg = JSON.parse(fs.readFileSync(rf, 'utf8'));
+                                if (reg.instances) {
+                                    for (const [k, inst] of Object.entries(reg.instances)) {
+                                        if (inst.port === currentPort) {
+                                            inst.name = newName;
+                                            break;
+                                        }
+                                    }
+                                    fs.writeFileSync(rf, JSON.stringify(reg, null, 2));
+                                }
+                            }
+                        } catch (_) {}
+                    }
+
+                    const http = require('http');
+                    const notifyServer = (targetPort, apiPath, postData) => {
+                        try {
+                            const dataStr = JSON.stringify(postData);
+                            const opt = {
+                                hostname: '127.0.0.1',
+                                port: targetPort,
+                                path: apiPath,
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Content-Length': Buffer.byteLength(dataStr)
+                                },
+                                timeout: 1000
+                            };
+                            const r = http.request(opt, () => {});
+                            r.on('error', () => {});
+                            r.write(dataStr);
+                            r.end();
+                        } catch (e) {}
+                    };
+                    notifyServer(9000, '/api/update-subpath', { port: currentPort, subpath: BASE_PATH || '/', name: newName });
+                    notifyServer(80, '/api/gateway/subpath', { port: currentPort, subpath: BASE_PATH || '/', name: newName });
+
+                    return res.json({ success: true, name: newName, port: currentPort });
+                };
+
+                app.all('/api/project-name', handleProjectName);
+                if (BASE_PATH) {
+                    app.all(BASE_PATH + '/api/project-name', handleProjectName);
+                }
 
                 app.post('/api/custom-subpath', handleCustomSubpath);
                 if (BASE_PATH) {

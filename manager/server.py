@@ -17,7 +17,7 @@ from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 
 from port_engine import PortEngine
-from project_builder import generate_fuxa_database, sync_tags_to_view_database, get_storage_tags_for_plant
+from project_builder import generate_fuxa_database, sync_tags_to_view_database, get_storage_tags_for_plant, update_project_name_in_db
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from nginx.fuxa_route_generator import generate_nginx_conf, reload_nginx
 
@@ -111,6 +111,7 @@ def update_subpath(req: UpdateSubpathRequest):
     new_sub = "/" + req.subpath.strip("/")
     instances = port_engine.get_all_instances()
     found = False
+    target_work_dir = None
     for inst_id, inst in instances.items():
         if inst.get("port") == req.port:
             inst["subpath"] = new_sub
@@ -118,27 +119,41 @@ def update_subpath(req: UpdateSubpathRequest):
             inst["home_url"] = f"{new_sub}/home"
             if req.name:
                 inst["name"] = req.name
+            target_work_dir = inst.get("work_dir") or os.path.join(INSTANCES_DIR, f"port_{req.port}")
             port_engine.register_instance(inst_id, inst)
             found = True
             break
 
     if not found:
         inst_id = f"port_{req.port}"
+        target_work_dir = os.path.join(INSTANCES_DIR, f"port_{req.port}")
         inst = {
             "id": inst_id,
             "port": req.port,
             "subpath": new_sub,
             "name": req.name or f"Custom Line ({new_sub})",
+            "work_dir": target_work_dir,
             "editor_url": f"{new_sub}/editor",
             "home_url": f"{new_sub}/home"
         }
         port_engine.register_instance(inst_id, inst)
         found = True
 
+    # Persist project name directly inside FUXA SQLite DB
+    if req.name and target_work_dir:
+        db_path = os.path.join(target_work_dir, "project.fuxap.db")
+        update_project_name_in_db(db_path, req.name)
+        # Notify FUXA instance process if running
+        try:
+            import requests
+            requests.post(f"http://127.0.0.1:{req.port}/api/project-name", credentials=None, json={"name": req.name}, timeout=0.3)
+        except Exception:
+            pass
+
     # Notify Embedded Gateway on Port 80
     try:
         import requests
-        requests.post("http://127.0.0.1:80/api/gateway/subpath", json={"subpath": new_sub, "port": req.port}, timeout=0.5)
+        requests.post("http://127.0.0.1:80/api/gateway/subpath", json={"subpath": new_sub, "port": req.port, "name": req.name}, timeout=0.5)
     except Exception:
         pass
 
@@ -165,11 +180,25 @@ def rename_instance(instance_id: str, req: dict):
         inst["subpath"] = new_sub
         inst["editor_url"] = f"{new_sub}/editor"
         inst["home_url"] = f"{new_sub}/home"
+
+    # Persist project name in SQLite database
+    work_dir = inst.get("work_dir") or os.path.join(INSTANCES_DIR, f"port_{inst.get('port')}")
+    if "name" in req and req["name"]:
+        db_path = os.path.join(work_dir, "project.fuxap.db")
+        update_project_name_in_db(db_path, req["name"])
+        # Notify running FUXA server
         try:
             import requests
-            requests.post("http://127.0.0.1:80/api/gateway/subpath", json={"subpath": new_sub, "port": inst.get("port"), "name": inst.get("name")}, timeout=0.5)
+            requests.post(f"http://127.0.0.1:{inst.get('port')}/api/project-name", json={"name": req["name"]}, timeout=0.3)
         except Exception:
             pass
+
+    try:
+        import requests
+        requests.post("http://127.0.0.1:80/api/gateway/subpath", json={"subpath": inst.get("subpath"), "port": inst.get("port"), "name": inst.get("name")}, timeout=0.5)
+    except Exception:
+        pass
+
     port_engine.register_instance(instance_id, inst)
     return {"success": True, "instance": inst}
 
@@ -209,6 +238,7 @@ def create_project(req: CreateProjectRequest):
         plant_id=req.plant,
         division_name=div_name,
         line_name=line_name,
+        project_name=req.project_name,
         opcua_endpoint="opc.tcp://127.0.0.1:4845/fuxa/server/",
         base_dir=BASE_DIR
     )

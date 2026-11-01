@@ -1,10 +1,12 @@
 /**
- * FUXA Enterprise - Custom URL & Direct Page URL Manager
+ * FUXA Enterprise - Custom URL & Project Name Manager
  * Integrated directly inside the Settings (⚙️) Setup Card with native FUXA styling
  */
 
 (function () {
-    console.log('[FUXA-Enterprise] Settings Custom URL Manager active.');
+    console.log('[FUXA-Enterprise] Settings Custom URL & Project Manager active.');
+
+    let liveProjectName = localStorage.getItem('fuxa_project_name') || '';
 
     function getBasePath() {
         if (window.__BASE_PATH__) return window.__BASE_PATH__;
@@ -29,12 +31,87 @@
         return parseInt(localStorage.getItem('fuxa_target_port') || '9610', 10);
     }
 
+    function updateHeaderBadge(name) {
+        if (!name) return;
+        document.title = `${name} - FUXA SCADA`;
+        const headerPanel = document.querySelector('app-header .header-panel, .header-panel');
+        if (headerPanel) {
+            let badge = document.getElementById('fuxa-header-project-badge');
+            if (!badge) {
+                badge = document.createElement('div');
+                badge.id = 'fuxa-header-project-badge';
+                badge.style.cssText = 'display: inline-flex; align-items: center; gap: 8px; margin-left: 12px; padding: 4px 12px; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; color: #38bdf8; font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 600; cursor: default; user-select: none; -webkit-user-select: none;';
+                headerPanel.appendChild(badge);
+            }
+            badge.innerHTML = `<span style="opacity: 0.65; font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase;">Project:</span> <span id="fuxa-header-project-name">${name}</span>`;
+        }
+    }
+
+    async function fetchLiveProjectName() {
+        try {
+            const res = await fetch('api/project-name');
+            if (res.ok) {
+                const data = await res.json();
+                if (data.name) {
+                    liveProjectName = data.name;
+                    localStorage.setItem('fuxa_project_name', liveProjectName);
+                    updateHeaderBadge(liveProjectName);
+                    return liveProjectName;
+                }
+            }
+        } catch (e) {
+            try {
+                const res2 = await fetch('/api/project-name');
+                if (res2.ok) {
+                    const data2 = await res2.json();
+                    if (data2.name) {
+                        liveProjectName = data2.name;
+                        localStorage.setItem('fuxa_project_name', liveProjectName);
+                        updateHeaderBadge(liveProjectName);
+                        return liveProjectName;
+                    }
+                }
+            } catch (e2) {}
+        }
+        return liveProjectName || 'SCADA Line';
+    }
+
+    async function saveProjectName(newName) {
+        if (!newName || !newName.trim()) return;
+        const cleanName = newName.trim();
+        liveProjectName = cleanName;
+        localStorage.setItem('fuxa_project_name', cleanName);
+        updateHeaderBadge(cleanName);
+
+        const payload = JSON.stringify({ name: cleanName });
+        try {
+            await fetch('api/project-name', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: payload
+            });
+            console.log(`[FUXA] Project Name saved to database: ${cleanName}`);
+        } catch (e) {
+            try {
+                await fetch('/api/project-name', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: payload
+                });
+            } catch (e2) {}
+        }
+    }
+
     async function syncSubpathToGateway(newSubpath, customPort, customName) {
         const port = customPort || getTargetPort();
         const host = window.location.hostname || '127.0.0.1';
         const payload = JSON.stringify({ subpath: newSubpath, port: port, name: customName });
 
-        // 1. Update same-origin FUXA Server endpoint (100% immune to CORS)
+        if (customName) {
+            await saveProjectName(customName);
+        }
+
+        // 1. Update same-origin FUXA Server endpoint
         try {
             await fetch('api/custom-subpath', {
                 method: 'POST',
@@ -103,19 +180,11 @@
             if (btn.id === 'fuxa-header-page-url-btn' || 
                 (btn.textContent && btn.textContent.trim().includes('Page URL') && !btn.closest('.custom-url-setting-field'))) {
                 if (btn.closest('app-header') || btn.closest('.header-left') || btn.closest('.header-right') || btn.closest('.my-toolbar') || btn.parentNode === document.querySelector('.header-left')) {
-                    console.log('[FUXA] Removed legacy header Page URL button from header toolbar.');
                     btn.remove();
                 }
             }
         });
-    }
-
-    function getProjectName() {
-        const headerTitle = document.querySelector('.header-title, .project-name, app-header .title, .header-left .title');
-        if (headerTitle && headerTitle.textContent) {
-            return headerTitle.textContent.trim();
-        }
-        return localStorage.getItem('fuxa_project_name') || 'EMS';
+        updateHeaderBadge(liveProjectName);
     }
 
     // Observe Settings Dialog (⚙️) to inject Custom Subpath & Page URLs card
@@ -134,7 +203,7 @@
                         customDiv.style.cssText = 'width: 320px;';
                         
                         const currentSubpath = getBasePath();
-                        const currentProjectName = getProjectName();
+                        const currentProjectName = liveProjectName || 'EMS';
                         const hostUrl = getHostUrl();
                         const viewName = getCurrentViewName();
                         const fullViewUrl = viewName ? `${hostUrl}${currentSubpath}/home/${viewName}` : `${hostUrl}${currentSubpath}/home`;
@@ -174,7 +243,7 @@
                                         Copy
                                     </button>
                                     <a id="fuxa-link-open-view" href="${fullViewUrl}" target="_blank" 
-                                       style="height: 28px; padding: 0 10px; font-size: 11px; border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 2px; background: transparent; color: inherit; text-decoration: none; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center;">
+                                        style="height: 28px; padding: 0 10px; font-size: 11px; border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 2px; background: transparent; color: inherit; text-decoration: none; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center;">
                                         Open ↗
                                     </a>
                                 </div>
@@ -226,10 +295,13 @@
                             });
                         }
 
-                        saveBtn.addEventListener('click', async () => {
+                        async function doSaveSettings() {
                             const val = input.value.trim();
                             const updatedName = nameInput ? nameInput.value.trim() : '';
-                            if (updatedName) localStorage.setItem('fuxa_project_name', updatedName);
+
+                            if (updatedName) {
+                                await saveProjectName(updatedName);
+                            }
 
                             if (val) {
                                 const clean = setBasePath(val);
@@ -256,7 +328,17 @@
                                     saveBtn.style.background = '#3f51b5';
                                 }, 2000);
                             }
-                        });
+                        }
+
+                        saveBtn.addEventListener('click', doSaveSettings);
+
+                        // Hook into native Dialog OK button so closing Settings also persists Project Name & Subpath!
+                        const dialogOkBtn = dialog.querySelector('.dialog-action button[color="primary"], mat-dialog-actions button:last-child, button[cdkfocusinitial]');
+                        if (dialogOkBtn) {
+                            dialogOkBtn.addEventListener('click', () => {
+                                doSaveSettings();
+                            });
+                        }
 
                         copyViewBtn.addEventListener('click', () => {
                             navigator.clipboard.writeText(viewInput.value);
@@ -286,8 +368,13 @@
     }
 
     // Init
-    window.addEventListener('DOMContentLoaded', observeSettingsDialog);
+    fetchLiveProjectName();
+    window.addEventListener('DOMContentLoaded', () => {
+        fetchLiveProjectName();
+        observeSettingsDialog();
+    });
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        fetchLiveProjectName();
         observeSettingsDialog();
     }
 })();

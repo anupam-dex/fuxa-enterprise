@@ -168,17 +168,22 @@ def generate_fuxa_database(
     plant_id: int,
     division_name: str,
     line_name: str,
+    project_name: str = None,
     opcua_endpoint: str = DEFAULT_OPCUA_ENDPOINT,
     base_dir: str = None
 ) -> str:
     """
     Creates project.fuxap.db for a View Server with:
+    - Dedicated Project Name in general table
     - Pre-configured OPC-UA device dev_opcua_plant_{plant_id}
     - Pre-populated storage server tags
     - Default overview view with visual header
     """
     os.makedirs(target_dir, exist_ok=True)
     db_path = os.path.join(target_dir, "project.fuxap.db")
+
+    proj_title = (project_name.strip() if project_name and project_name.strip() 
+                  else f"Plant {plant_id} - {division_name} ({line_name})")
 
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
@@ -197,8 +202,9 @@ def generate_fuxa_database(
     cur.execute("CREATE TABLE IF NOT EXISTS locations (name TEXT PRIMARY KEY, value TEXT);")
     cur.execute("CREATE TABLE IF NOT EXISTS arMarkers (name TEXT PRIMARY KEY, value TEXT);")
 
-    # 1. General settings & version
+    # 1. General settings, version & explicit Project Name
     cur.execute("INSERT OR REPLACE INTO general (name, value) VALUES (?, ?);", ("version", "1.00"))
+    cur.execute("INSERT OR REPLACE INTO general (name, value) VALUES (?, ?);", ("name", json.dumps(proj_title)))
     
     # Required FuxaServer device (id: '0')
     fuxa_server_dev = {"id": "0", "name": "FUXA Server", "type": "FuxaServer", "property": {}}
@@ -207,9 +213,9 @@ def generate_fuxa_database(
 
     general_data = {
         "version": "1.00",
-        "title": f"Plant {plant_id} - {division_name} ({line_name})",
+        "title": proj_title,
         "header": {
-            "title": f"Plant {plant_id} | {division_name}",
+            "title": proj_title,
             "alarms": True,
             "login": True
         }
@@ -248,9 +254,9 @@ def generate_fuxa_database(
         f'<rect width="1920" height="1080" fill="#0f172a"/>'
         f'<rect x="20" y="20" width="1880" height="80" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>'
         f'<text fill="#38bdf8" font-size="26" font-family="system-ui, sans-serif" font-weight="700" x="50" y="62">'
-        f'Plant {plant_id} &bull; {division_name} &bull; {line_name}</text>'
+        f'{proj_title}</text>'
         f'<text fill="#10b981" font-size="14" font-family="system-ui, sans-serif" font-weight="600" x="50" y="86">'
-        f'🟢 Central Storage Bridge Active (:4845) &bull; {len(storage_tags)} Storage Tags Ingested</text>'
+        f'🟢 Central Storage Bridge Active (:4845) &bull; {len(storage_tags)} Storage Tags Ingested &bull; Plant {plant_id} ({line_name})</text>'
         f'</g></svg>'
     )
     view_obj = {
@@ -326,6 +332,37 @@ def sync_tags_to_view_database(target_dir: str, plant_id: int, base_dir: str = N
     conn.commit()
     conn.close()
     return storage_tags
+
+def update_project_name_in_db(db_path: str, new_name: str) -> bool:
+    """
+    Updates the project name directly inside FUXA SQLite database (general table: 'name' and 'general' title).
+    """
+    if not os.path.exists(db_path):
+        return False
+    try:
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        cur.execute("CREATE TABLE IF NOT EXISTS general (name TEXT PRIMARY KEY, value TEXT);")
+        # 1. Update project name
+        cur.execute("INSERT OR REPLACE INTO general (name, value) VALUES (?, ?);", ("name", json.dumps(new_name)))
+        # 2. Update general header title
+        cur.execute("SELECT value FROM general WHERE name = 'general';")
+        row = cur.fetchone()
+        if row:
+            try:
+                g = json.loads(row[0])
+                g["title"] = new_name
+                if "header" in g and isinstance(g["header"], dict):
+                    g["header"]["title"] = new_name
+                cur.execute("UPDATE general SET value = ? WHERE name = 'general';", (json.dumps(g),))
+            except Exception:
+                pass
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Error updating project name in DB: {e}")
+        return False
 
 if __name__ == "__main__":
     test_dir = "/tmp/fuxa_test_appdata"
