@@ -89,7 +89,10 @@ function updatePortPreview() {
     document.getElementById('p-calc-line').textContent = line;
 
     const basePort = `${plant}${div}${line}0`;
-    document.getElementById('p-calc-result').textContent = basePort;
+    const portInput = document.getElementById('input-custom-port');
+    if (portInput) {
+        portInput.value = basePort;
+    }
 
     const defaultSub = `/p${plant}/div${div}/l${line}`;
     const subInput = document.getElementById('input-subpath');
@@ -105,6 +108,7 @@ async function submitCreateProject() {
     const line = parseInt(document.getElementById('input-line').value || '1');
     const name = document.getElementById('input-name').value || `Plant ${plant} Div ${div} Line ${line}`;
     const customSubpath = (document.getElementById('input-subpath')?.value || '').trim();
+    const customPort = parseInt(document.getElementById('input-custom-port')?.value || '0', 10);
 
     const btn = document.getElementById('btn-submit');
     btn.disabled = true;
@@ -119,7 +123,8 @@ async function submitCreateProject() {
                 division: div,
                 line: line,
                 project_name: name,
-                custom_subpath: customSubpath
+                custom_subpath: customSubpath,
+                custom_port: customPort > 0 ? customPort : undefined
             })
         });
 
@@ -155,8 +160,9 @@ function editInstance(id) {
     document.getElementById('edit-input-line').value = inst.line !== undefined ? inst.line : 1;
     document.getElementById('edit-input-name').value = inst.name || '';
     document.getElementById('edit-input-subpath').value = inst.subpath || '';
-    document.getElementById('edit-port-chip').textContent = inst.port || '9610';
-    document.getElementById('edit-port-calc-result').textContent = inst.port || '9610';
+    const port = inst.port || 9610;
+    document.getElementById('edit-input-port').value = port;
+    document.getElementById('edit-port-calc-result').textContent = port;
     document.getElementById('edit-modal').classList.add('show');
 }
 
@@ -171,6 +177,7 @@ async function submitEditInstance() {
     const line = parseInt(document.getElementById('edit-input-line').value || '1');
     const name = document.getElementById('edit-input-name').value.trim();
     const subpath = document.getElementById('edit-input-subpath').value.trim();
+    const port = parseInt(document.getElementById('edit-input-port')?.value || '0', 10);
     const btn = document.getElementById('btn-save-edit');
     btn.disabled = true;
     btn.textContent = 'Saving...';
@@ -184,7 +191,8 @@ async function submitEditInstance() {
                 subpath: subpath,
                 plant: plant,
                 division: div,
-                line: line
+                line: line,
+                port: port > 0 ? port : undefined
             })
         });
         const data = await res.json();

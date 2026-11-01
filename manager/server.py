@@ -88,6 +88,7 @@ class CreateProjectRequest(BaseModel):
     line: int
     project_name: str
     custom_subpath: str = None
+    custom_port: int = None
 
 class UpdateSubpathRequest(BaseModel):
     port: int
@@ -146,6 +147,8 @@ def rename_instance(instance_id: str, req: dict):
         inst["division"] = int(req["division"])
     if "line" in req and req["line"] is not None:
         inst["line"] = int(req["line"])
+    if "port" in req and req["port"] is not None:
+        inst["port"] = int(req["port"])
     if "subpath" in req and req["subpath"]:
         new_sub = "/" + req["subpath"].strip("/")
         inst["subpath"] = new_sub
@@ -170,8 +173,15 @@ def get_matrix():
 
 @app.post("/api/create-project")
 def create_project(req: CreateProjectRequest):
-    # 1. Calculate Port (Deterministic formula + Collision avoidance)
-    port = port_engine.calculate_port(req.plant, req.division, req.line)
+    # 1. Calculate Port (or use custom port if provided)
+    if req.custom_port and req.custom_port > 1024:
+        port = req.custom_port
+    else:
+        port = port_engine.calculate_port(req.plant, req.division, req.line)
+
+    if port_engine.is_port_in_use(port):
+        raise HTTPException(status_code=400, detail=f"Port {port} is already in use by another instance or service.")
+
     instance_id = f"fuxa_p{req.plant}_d{req.division}_l{req.line}_{port}"
 
     logger.info(f"Allocating new FUXA instance: {instance_id} on port {port}")

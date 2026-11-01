@@ -109,7 +109,9 @@
                     </div>
                     <div class="port-result">
                         <span>Assigned Port:</span>
-                        <div class="port-chip" id="p-calc-result">9610</div>
+                        <input type="number" id="input-custom-port" value="9610" min="1024" max="65535"
+                               style="width: 100px; text-align: center; font-weight: bold; font-family: monospace; font-size: 1.1rem; background: #0f172a; color: #38bdf8; border: 1px solid #0284c7; border-radius: 4px; padding: 4px;"
+                               title="Auto-calculated from formula, or enter custom port number (e.g. 9621, 9622)">
                     </div>
                 </div>
 
@@ -202,8 +204,10 @@
                         <code>Port: <span id="edit-port-calc-result">9610</span></code>
                     </div>
                     <div class="port-result">
-                        <span>Current Port:</span>
-                        <div class="port-chip" id="edit-port-chip">9610</div>
+                        <span>Server Port:</span>
+                        <input type="number" id="edit-input-port" value="9610" min="1024" max="65535"
+                               style="width: 100px; text-align: center; font-weight: bold; font-family: monospace; font-size: 1.1rem; background: #0f172a; color: #38bdf8; border: 1px solid #334155; border-radius: 4px; padding: 4px;"
+                               title="Port number for this view server">
                     </div>
                 </div>
             </div>
