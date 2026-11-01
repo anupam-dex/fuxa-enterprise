@@ -82,6 +82,20 @@
                     width: 100% !important;
                     box-sizing: border-box !important;
                 }
+
+                /* Live Date & Time badge in header */
+                app-header .header-right {
+                    width: auto !important;
+                    min-width: 120px !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: flex-end !important;
+                }
+                .fuxa-header-datetime-badge {
+                    user-select: none !important;
+                    white-space: nowrap !important;
+                    font-variant-numeric: tabular-nums !important;
+                }
             `;
             (document.head || document.documentElement).appendChild(style);
         }
@@ -231,6 +245,7 @@
             observeSidenavDrawer(runtimeHeader);
             ensureRuntimeDashboardHeadline(runtimeHeader);
             ensureRuntimeFooter();
+            ensureHeaderLiveDateTime();
         } finally {
             isMutating = false;
         }
@@ -306,6 +321,102 @@
             document.body.appendChild(footer);
         } else if (footer.innerHTML !== footerHtml) {
             footer.innerHTML = footerHtml;
+        }
+    }
+
+    function formatLiveDateTime(d) {
+        const pad = (n) => String(n).padStart(2, '0');
+        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const day = pad(d.getDate());
+        const month = months[d.getMonth()];
+        const year = d.getFullYear();
+        const hours = pad(d.getHours());
+        const minutes = pad(d.getMinutes());
+        const seconds = pad(d.getSeconds());
+        return `${day}-${month}-${year} ${hours}:${minutes}:${seconds}`;
+    }
+
+    let liveDateTimeInterval = null;
+    function startLiveDateTimeTicker() {
+        if (liveDateTimeInterval) return;
+        liveDateTimeInterval = setInterval(updateAllLiveDateTimes, 1000);
+    }
+
+    function updateAllLiveDateTimes() {
+        const now = new Date();
+        const formatted = formatLiveDateTime(now);
+        const elements = document.querySelectorAll('.fuxa-live-datetime-text');
+        for (let i = 0; i < elements.length; i++) {
+            if (elements[i].textContent !== formatted) {
+                elements[i].textContent = formatted;
+            }
+        }
+    }
+
+    function ensureHeaderLiveDateTime() {
+        startLiveDateTimeTicker();
+        const now = new Date();
+        const formatted = formatLiveDateTime(now);
+
+        // 1. In View / Runtime page (app-home .header)
+        const runtimeHeader = document.querySelector('app-home .header, mat-sidenav-content > .header, .sidenav-container .header');
+        if (runtimeHeader) {
+            let viewDateTime = document.getElementById('fuxa-view-header-datetime');
+            const notifyContainer = runtimeHeader.querySelector('.header-notify-button');
+            const targetParent = notifyContainer || runtimeHeader;
+
+            // Check if Angular native header-date-time exists and has non-empty text
+            const nativeDateTime = runtimeHeader.querySelector('.header-date-time:not(#fuxa-view-header-datetime)');
+            if (nativeDateTime && nativeDateTime.textContent.trim().length > 3) {
+                if (viewDateTime) viewDateTime.remove();
+            } else {
+                if (!viewDateTime) {
+                    viewDateTime = document.createElement('div');
+                    viewDateTime.id = 'fuxa-view-header-datetime';
+                    viewDateTime.className = 'header-date-time fuxa-header-datetime-badge';
+                    viewDateTime.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; margin-left: 8px; border-left: 1px solid rgba(255,255,255,0.22); font-size: 13px; font-weight: 500; font-family: monospace, sans-serif; letter-spacing: 0.3px; color: inherit; user-select: none; white-space: nowrap; height: 100%;';
+                    viewDateTime.innerHTML = `
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.85; flex-shrink: 0;">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                        <span class="fuxa-live-datetime-text">${formatted}</span>
+                    `;
+                    targetParent.appendChild(viewDateTime);
+                } else if (viewDateTime.parentNode !== targetParent) {
+                    targetParent.appendChild(viewDateTime);
+                }
+            }
+        }
+
+        // 2. In Editor page (app-header .header-right)
+        const editorHeaderRight = document.querySelector('app-header .header-right');
+        if (editorHeaderRight) {
+            let editorDateTime = document.getElementById('fuxa-editor-header-datetime');
+            if (!editorDateTime) {
+                editorDateTime = document.createElement('div');
+                editorDateTime.id = 'fuxa-editor-header-datetime';
+                editorDateTime.className = 'fuxa-header-datetime-badge';
+                editorDateTime.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; margin-right: 10px; border-left: 1px solid rgba(255,255,255,0.18); font-size: 13px; font-weight: 500; font-family: monospace, sans-serif; letter-spacing: 0.3px; color: rgba(255,255,255,0.88); user-select: none; white-space: nowrap; height: 100%;';
+                editorDateTime.innerHTML = `
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.85; flex-shrink: 0;">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                    <span class="fuxa-live-datetime-text">${formatted}</span>
+                `;
+                const helpDiv = editorHeaderRight.querySelector('.header-help');
+                if (helpDiv) {
+                    editorHeaderRight.insertBefore(editorDateTime, helpDiv);
+                } else {
+                    editorHeaderRight.prepend(editorDateTime);
+                }
+            } else {
+                const helpDiv = editorHeaderRight.querySelector('.header-help');
+                if (helpDiv && editorDateTime.nextElementSibling !== helpDiv) {
+                    editorHeaderRight.insertBefore(editorDateTime, helpDiv);
+                }
+            }
         }
     }
 
@@ -1382,6 +1493,7 @@
     window.addEventListener('popstate', () => setTimeout(() => {
         ensureTvsHeaderLogo();
         ensureRuntimeFooter();
+        ensureHeaderLiveDateTime();
     }, 50));
 
     // Safe Single-Run Initialization
@@ -1391,6 +1503,7 @@
         if (staleBadge) staleBadge.remove();
         ensureTvsHeaderLogo();
         ensureRuntimeFooter();
+        ensureHeaderLiveDateTime();
         enforceViewServerRestrictions();
         fetchLiveProjectName();
         observeSettingsDialog();
@@ -1423,6 +1536,7 @@
     setInterval(() => {
         ensureTvsHeaderLogo();
         ensureRuntimeFooter();
+        ensureHeaderLiveDateTime();
         enforceViewServerRestrictions();
     }, 800);
 

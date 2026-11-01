@@ -379,6 +379,7 @@ def generate_fuxa_database(
             "height": 48,
             "fontSize": 15,
             "itemsAnchor": "center",
+            "dateTimeDisplay": "dd-MMM-yyyy HH:mm:ss",
             "items": [
                 {
                     "id": "header_headline",
@@ -539,16 +540,24 @@ def sync_tags_to_view_database(target_dir: str, plant_id: int, base_dir: str = N
             except Exception:
                 pass
 
-        # Ensure navigation mode is 'over' so hamburger menu is visible
+        # Ensure navigation mode is 'over' and header date-time is enabled by default
         cur.execute("SELECT value FROM general WHERE name = 'layout';")
         lrow = cur.fetchone()
         if lrow:
             try:
                 layout_dict = json.loads(lrow[0])
+                updated = False
                 nav = layout_dict.get("navigation", {})
                 if nav.get("mode") == "fix":
                     nav["mode"] = "over"
                     layout_dict["navigation"] = nav
+                    updated = True
+                hdr = layout_dict.get("header", {})
+                if not hdr.get("dateTimeDisplay"):
+                    hdr["dateTimeDisplay"] = "dd-MMM-yyyy HH:mm:ss"
+                    layout_dict["header"] = hdr
+                    updated = True
+                if updated:
                     cur.execute("UPDATE general SET value = ? WHERE name = 'layout';", (json.dumps(layout_dict),))
             except Exception:
                 pass
