@@ -152,14 +152,59 @@
             </div>
             <div class="modal-body">
                 <input type="hidden" id="edit-instance-id">
-                <div class="form-group" style="margin-bottom: 15px;">
-                    <label for="edit-input-name" style="display:block; margin-bottom: 5px; font-weight:600;">Project / Line Name</label>
-                    <input type="text" id="edit-input-name" style="width: 100%; padding: 8px 10px; border: 1px solid #334155; border-radius: 4px; background: #0f172a; color: white; box-sizing: border-box;">
+                
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="edit-sel-plant">Target Plant</label>
+                        <select id="edit-sel-plant">
+                            <option value="9">Plant 9 - Paintshop Complex</option>
+                            <option value="1">Plant 1 - Foundry & Powerhouse</option>
+                            <option value="2">Plant 2 - Stamping & Press</option>
+                            <option value="3">Plant 3 - Body & Assembly</option>
+                            <option value="4">Plant 4 - Powertrain & Engine</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="edit-sel-div">Division / Location</label>
+                        <select id="edit-sel-div">
+                            <option value="6">Paintshop (6)</option>
+                            <option value="1">Body Shop (1)</option>
+                            <option value="2">Stamping (2)</option>
+                            <option value="3">Assembly (3)</option>
+                            <option value="4">Quality & Inspection (4)</option>
+                            <option value="5">Utility & Boiler (5)</option>
+                            <option value="7">Robotics (7)</option>
+                            <option value="8">Material Handling (8)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="edit-input-line">Sub-Location / Line Number</label>
+                        <input type="number" id="edit-input-line" value="1" min="1" max="9">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="edit-input-name">Project Title / Line Name</label>
+                        <input type="text" id="edit-input-name" placeholder="e.g. Paintshop Oven Line 1">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="edit-input-subpath">Custom OT URL / Subpath (Port 80)</label>
+                        <input type="text" id="edit-input-subpath" placeholder="e.g. /p9/ps/ems" style="font-family: monospace;">
+                        <small style="color: #94a3b8; display:block; margin-top: 5px;">Port 80 clean reverse proxy path for this server.</small>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="edit-input-subpath" style="display:block; margin-bottom: 5px; font-weight:600;">Custom OT URL / Subpath (Port 80)</label>
-                    <input type="text" id="edit-input-subpath" placeholder="e.g. /p9/ps/ems" style="width: 100%; padding: 8px 10px; border: 1px solid #334155; border-radius: 4px; background: #0f172a; color: #38bdf8; font-family: monospace; box-sizing: border-box;">
-                    <small style="color: #94a3b8; display:block; margin-top: 5px;">Port 80 clean reverse proxy path for this server.</small>
+
+                <div class="port-preview-box" style="margin-top: 15px;">
+                    <div class="port-formula">
+                        <span>Assigned Server Port:</span>
+                        <code>Port: <span id="edit-port-calc-result">9610</span></code>
+                    </div>
+                    <div class="port-result">
+                        <span>Current Port:</span>
+                        <div class="port-chip" id="edit-port-chip">9610</div>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">

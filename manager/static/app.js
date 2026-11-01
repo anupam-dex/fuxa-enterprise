@@ -11,9 +11,12 @@ async function loadMatrix() {
     }
 }
 
+let allInstancesMap = {};
+
 function renderPlantGrid(matrix) {
     const grid = document.getElementById('plant-grid');
     grid.innerHTML = '';
+    allInstancesMap = {};
 
     matrix.forEach(plant => {
         const card = document.createElement('div');
@@ -26,7 +29,9 @@ function renderPlantGrid(matrix) {
         if (plant.instances.length === 0) {
             instancesHtml = `<div style="color: var(--text-muted); font-size: 0.85rem; padding: 10px 0;">No active view servers created yet.</div>`;
         } else {
-            instancesHtml = plant.instances.map(inst => `
+            instancesHtml = plant.instances.map(inst => {
+                allInstancesMap[inst.id] = inst;
+                return `
                 <div class="instance-row">
                     <div class="instance-info">
                         <div class="instance-name">${inst.name}</div>
@@ -36,12 +41,13 @@ function renderPlantGrid(matrix) {
                         <a href="${window.location.protocol}//${window.location.hostname}:${inst.port}/editor" target="_blank" class="btn btn-primary btn-sm">Editor</a>
                         <a href="${window.location.protocol}//${window.location.hostname}:${inst.port}/home" target="_blank" class="btn btn-secondary btn-sm">View</a>
                         <a href="${window.location.protocol}//${window.location.hostname}${inst.subpath}/editor" target="_blank" title="Open via OT Gateway (Port 80)" class="btn btn-secondary btn-sm">OT Link</a>
-                        <button onclick="editInstance('${inst.id}', '${inst.name.replace(/'/g, "\\'")}', '${inst.subpath}')" class="btn btn-secondary btn-sm" title="Edit Name & Subpath">✏️ Edit</button>
+                        <button onclick="editInstance('${inst.id}')" class="btn btn-secondary btn-sm" title="Edit View Server">✏️ Edit</button>
                         <button onclick="viewLogs('${inst.id}')" class="btn btn-secondary btn-sm" title="View Live Logs & Alarms">Logs</button>
                         <button onclick="deleteInstance('${inst.id}')" class="btn btn-danger btn-sm">&#128465;</button>
                     </div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
         }
 
         card.innerHTML = `
@@ -140,10 +146,17 @@ async function deleteInstance(id) {
     }
 }
 
-function editInstance(id, currentName, currentSubpath) {
+function editInstance(id) {
+    const inst = allInstancesMap[id];
+    if (!inst) return;
     document.getElementById('edit-instance-id').value = id;
-    document.getElementById('edit-input-name').value = currentName;
-    document.getElementById('edit-input-subpath').value = currentSubpath;
+    document.getElementById('edit-sel-plant').value = inst.plant !== undefined ? inst.plant : 9;
+    document.getElementById('edit-sel-div').value = inst.division !== undefined ? inst.division : 6;
+    document.getElementById('edit-input-line').value = inst.line !== undefined ? inst.line : 1;
+    document.getElementById('edit-input-name').value = inst.name || '';
+    document.getElementById('edit-input-subpath').value = inst.subpath || '';
+    document.getElementById('edit-port-chip').textContent = inst.port || '9610';
+    document.getElementById('edit-port-calc-result').textContent = inst.port || '9610';
     document.getElementById('edit-modal').classList.add('show');
 }
 
@@ -153,6 +166,9 @@ function closeEditModal() {
 
 async function submitEditInstance() {
     const id = document.getElementById('edit-instance-id').value;
+    const plant = parseInt(document.getElementById('edit-sel-plant').value);
+    const div = parseInt(document.getElementById('edit-sel-div').value);
+    const line = parseInt(document.getElementById('edit-input-line').value || '1');
     const name = document.getElementById('edit-input-name').value.trim();
     const subpath = document.getElementById('edit-input-subpath').value.trim();
     const btn = document.getElementById('btn-save-edit');
@@ -163,7 +179,13 @@ async function submitEditInstance() {
         const res = await fetch(`/api/instances/${id}/rename`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: name, subpath: subpath })
+            body: JSON.stringify({
+                name: name,
+                subpath: subpath,
+                plant: plant,
+                division: div,
+                line: line
+            })
         });
         const data = await res.json();
         if (data.success) {

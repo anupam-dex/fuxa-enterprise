@@ -140,6 +140,12 @@ def rename_instance(instance_id: str, req: dict):
     inst = instances[instance_id]
     if "name" in req and req["name"]:
         inst["name"] = req["name"]
+    if "plant" in req and req["plant"] is not None:
+        inst["plant"] = int(req["plant"])
+    if "division" in req and req["division"] is not None:
+        inst["division"] = int(req["division"])
+    if "line" in req and req["line"] is not None:
+        inst["line"] = int(req["line"])
     if "subpath" in req and req["subpath"]:
         new_sub = "/" + req["subpath"].strip("/")
         inst["subpath"] = new_sub
@@ -147,7 +153,7 @@ def rename_instance(instance_id: str, req: dict):
         inst["home_url"] = f"{new_sub}/home"
         try:
             import requests
-            requests.post("http://127.0.0.1:80/api/gateway/subpath", json={"subpath": new_sub, "port": inst.get("port")}, timeout=0.5)
+            requests.post("http://127.0.0.1:80/api/gateway/subpath", json={"subpath": new_sub, "port": inst.get("port"), "name": inst.get("name")}, timeout=0.5)
         except Exception:
             pass
     port_engine.register_instance(instance_id, inst)
