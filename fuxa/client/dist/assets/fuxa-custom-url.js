@@ -530,18 +530,30 @@
                 }
 
                 const workPanel = document.querySelector('app-device .work-panel, app-device');
-                if (workPanel && !document.getElementById('fuxa-statutory-device-banner')) {
-                    const banner = document.createElement('div');
+                let banner = document.getElementById('fuxa-statutory-device-banner');
+                if (workPanel && !banner) {
+                    banner = document.createElement('div');
                     banner.id = 'fuxa-statutory-device-banner';
-                    banner.style.cssText = 'background: rgba(234, 179, 8, 0.12); border: 1px solid rgba(234, 179, 8, 0.4); border-radius: 6px; padding: 12px 18px; margin: 12px 16px; display: flex; align-items: center; gap: 12px; color: #fef08a; font-size: 13px; font-weight: 500; font-family: system-ui, -apple-system, sans-serif; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); z-index: 100;';
+                    banner.style.cssText = 'background: #1e293b; border: 1.5px solid #eab308; border-left: 6px solid #eab308; border-radius: 6px; padding: 14px 20px; margin: 44px 20px 14px 20px; display: flex; align-items: flex-start; gap: 14px; color: #f1f5f9; font-size: 13.5px; font-family: system-ui, -apple-system, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,0.3); z-index: 100;';
+                    const host = window.location.hostname || 'localhost';
                     banner.innerHTML = `
-                        <span style="font-size: 22px; line-height: 1;">⚠️</span>
-                        <div style="flex: 1; line-height: 1.5;">
-                            <strong style="color: #facc15; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 2px;">Statutory Restriction: Read-Only Mapped View</strong>
-                            ${STATUTORY_WARNING_TEXT}
+                        <span style="font-size: 24px; line-height: 1; margin-top: 2px;">⚠️</span>
+                        <div style="flex: 1; line-height: 1.55;">
+                            <strong style="color: #facc15; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; display: block; margin-bottom: 4px;">Statutory Restriction: Read-Only Mapped View</strong>
+                            <div style="color: #cbd5e1; font-size: 13px; line-height: 1.55;">
+                                ${STATUTORY_WARNING_TEXT}
+                            </div>
+                            <div style="margin-top: 10px;">
+                                <a href="http://${host}:9000" target="_blank" rel="noopener noreferrer" 
+                                   style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 14px; background: #334155; border: 1px solid #64748b; color: #f8fafc; border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;">
+                                    Open Central Storage Fleet Manager (:9000) ↗
+                                </a>
+                            </div>
                         </div>
                     `;
                     workPanel.prepend(banner);
+                } else if (banner) {
+                    banner.style.cssText = 'background: #1e293b; border: 1.5px solid #eab308; border-left: 6px solid #eab308; border-radius: 6px; padding: 14px 20px; margin: 44px 20px 14px 20px; display: flex; align-items: flex-start; gap: 14px; color: #f1f5f9; font-size: 13.5px; font-family: system-ui, -apple-system, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,0.3); z-index: 100;';
                 }
             }
 
