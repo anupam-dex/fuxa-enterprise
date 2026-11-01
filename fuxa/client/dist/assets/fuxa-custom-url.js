@@ -153,7 +153,7 @@
             if (!logoDiv) {
                 logoDiv = document.createElement('div');
                 logoDiv.id = 'fuxa-runtime-tvs-logo';
-                logoDiv.style.cssText = 'display: inline-flex; align-items: center; margin-left: 10px; margin-right: 18px; height: 100%; cursor: default; user-select: none; z-index: 10; flex-shrink: 0;';
+                logoDiv.style.cssText = 'display: inline-flex; align-items: center; margin-left: 10px; margin-right: 18px; height: 100%; cursor: default; user-select: none; z-index: 10; flex-shrink: 0; transition: transform 0.28s cubic-bezier(0.25, 0.8, 0.25, 1); will-change: transform;';
                 logoDiv.title = 'TVS SCADA Enterprise';
                 logoDiv.innerHTML = TVS_LOGO_INLINE_SVG;
 
@@ -171,10 +171,60 @@
                 }
             }
 
+            observeSidenavDrawer(runtimeHeader);
             ensureRuntimeDashboardHeadline(runtimeHeader);
         } finally {
             isMutating = false;
         }
+    }
+
+    function observeSidenavDrawer(runtimeHeader) {
+        const sidenav = document.querySelector('mat-sidenav, .sidenav');
+        const logoDiv = document.getElementById('fuxa-runtime-tvs-logo');
+        if (!sidenav || !logoDiv) return;
+
+        const updateLogoShift = () => {
+            const isOpen = sidenav.classList.contains('mat-drawer-opened') || 
+                           (sidenav.style.visibility === 'visible' && sidenav.offsetWidth > 60) ||
+                           (sidenav.offsetWidth > 60 && !sidenav.classList.contains('mat-drawer-closed'));
+            
+            if (isOpen) {
+                const shiftWidth = (sidenav.offsetWidth > 60 ? sidenav.offsetWidth : 210) + 12;
+                logoDiv.style.transform = `translateX(${shiftWidth}px)`;
+            } else {
+                logoDiv.style.transform = 'translateX(0px)';
+            }
+        };
+
+        if (!sidenav.dataset.observerAttached) {
+            sidenav.dataset.observerAttached = 'true';
+
+            const drawerObserver = new MutationObserver(() => {
+                updateLogoShift();
+            });
+
+            drawerObserver.observe(sidenav, {
+                attributes: true,
+                attributeFilter: ['class', 'style', 'visibility']
+            });
+
+            window.addEventListener('click', () => {
+                setTimeout(updateLogoShift, 60);
+                setTimeout(updateLogoShift, 200);
+            }, true);
+        }
+
+        const menuBtn = runtimeHeader ? runtimeHeader.querySelector('.header-menu button') : null;
+        if (menuBtn && !menuBtn.dataset.shiftHooked) {
+            menuBtn.dataset.shiftHooked = 'true';
+            menuBtn.addEventListener('click', () => {
+                setTimeout(updateLogoShift, 50);
+                setTimeout(updateLogoShift, 150);
+                setTimeout(updateLogoShift, 300);
+            });
+        }
+
+        updateLogoShift();
     }
 
     function updateHeaderBadge(name) {
