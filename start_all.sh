@@ -25,6 +25,17 @@ if command -v systemctl &>/dev/null; then
     sudo systemctl disable nginx 2>/dev/null || true
 fi
 
+# Ensure log files are writable or remove root-owned logs
+for log_file in "$SCRIPT_DIR/opcua_bridge.log" "$SCRIPT_DIR/manager.log" "$SCRIPT_DIR/gateway.log"; do
+    if [ -f "$log_file" ]; then
+        if [ ! -w "$log_file" ]; then
+            sudo rm -f "$log_file" 2>/dev/null || rm -f "$log_file" 2>/dev/null || true
+        else
+            > "$log_file" 2>/dev/null || true
+        fi
+    fi
+done
+
 # Force kill any lingering processes on critical ports 80, 9000, 4845
 echo "Notice: Ensuring ports 80, 9000, 4845 are free..."
 fuser -k 80/tcp 9000/tcp 4845/tcp 2>/dev/null || true

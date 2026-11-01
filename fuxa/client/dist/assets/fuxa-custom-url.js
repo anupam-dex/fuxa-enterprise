@@ -64,17 +64,58 @@
         }
 
         // 2. Runtime / HMI View top header bar
-        const runtimeHeader = document.querySelector('.header .header-items-button, app-home .header-items-button, .header');
+        const runtimeHeader = document.querySelector('.header, app-home .header');
         if (runtimeHeader && !document.getElementById('fuxa-runtime-tvs-logo')) {
             const logoDiv = document.createElement('div');
             logoDiv.id = 'fuxa-runtime-tvs-logo';
-            logoDiv.style.cssText = 'display: inline-flex; align-items: center; margin-left: 12px; margin-right: 16px; height: 100%; vertical-align: middle;';
+            logoDiv.style.cssText = 'position: absolute; left: 16px; top: 0; bottom: 0; display: inline-flex; align-items: center; z-index: 10; cursor: default; user-select: none;';
             logoDiv.title = 'TVS SCADA Enterprise';
             logoDiv.innerHTML = `
                 <img src="assets/images/tvs-logo.svg" alt="TVS" style="height: 26px; width: auto; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));" 
                      onerror="this.src='/_images/Common/tvs-logo.svg'" />
             `;
             runtimeHeader.prepend(logoDiv);
+        }
+
+        ensureRuntimeDashboardHeadline();
+    }
+
+    function getFormattedHeadline(rawName) {
+        if (!rawName) return 'Plant Monitoring Dashboard';
+        const trimmed = rawName.trim();
+        if (/dashboard/i.test(trimmed)) return trimmed;
+        return `${trimmed} Monitoring Dashboard`;
+    }
+
+    function ensureRuntimeDashboardHeadline() {
+        const itemsContainer = document.querySelector('.header-items-button, app-home .header-items-button');
+        if (!itemsContainer) return;
+
+        // Force center alignment for the header items container
+        itemsContainer.style.setProperty('justify-content', 'center', 'important');
+        itemsContainer.style.setProperty('text-align', 'center', 'important');
+        itemsContainer.style.setProperty('flex', '1', 'important');
+
+        const currentHeadline = getFormattedHeadline(liveProjectName);
+
+        // Check if there is an existing headline element or label item
+        let headlineEl = itemsContainer.querySelector('#header_headline, #fuxa-runtime-headline');
+        if (headlineEl) {
+            headlineEl.textContent = currentHeadline;
+            headlineEl.style.cssText = 'display: inline-flex; align-items: center; font-size: 16px !important; font-weight: 700 !important; color: #ffffff !important; letter-spacing: 0.6px !important; text-transform: uppercase !important; font-family: system-ui, -apple-system, sans-serif !important; user-select: none; pointer-events: default; background: transparent !important; border: none !important; box-shadow: none !important;';
+        } else {
+            // Check if there are other label items in itemsContainer
+            const firstButton = itemsContainer.querySelector('button.mat-button, button');
+            if (firstButton && (firstButton.textContent.trim().toLowerCase().includes('dashboard') || firstButton.id === 'header_headline')) {
+                firstButton.textContent = currentHeadline;
+                firstButton.style.cssText = 'display: inline-flex; align-items: center; font-size: 16px !important; font-weight: 700 !important; color: #ffffff !important; letter-spacing: 0.6px !important; text-transform: uppercase !important; font-family: system-ui, -apple-system, sans-serif !important; user-select: none; background: transparent !important; border: none !important; box-shadow: none !important;';
+            } else {
+                headlineEl = document.createElement('div');
+                headlineEl.id = 'fuxa-runtime-headline';
+                headlineEl.textContent = currentHeadline;
+                headlineEl.style.cssText = 'display: inline-flex; align-items: center; font-size: 16px !important; font-weight: 700 !important; color: #ffffff !important; letter-spacing: 0.6px !important; text-transform: uppercase !important; font-family: system-ui, -apple-system, sans-serif !important; user-select: none; margin: 0 12px;';
+                itemsContainer.appendChild(headlineEl);
+            }
         }
     }
 
@@ -407,6 +448,80 @@
                                 copyEditorBtn.style.borderColor = '#aaa';
                             }, 2000);
                         });
+                    }
+                }
+            }
+
+            // Observe Layout Property Dialog (to edit Dashboard Headline directly from the Layout menu)
+            const layoutDialog = document.querySelector('app-layout-property');
+            if (layoutDialog && !layoutDialog.querySelector('#fuxa-layout-headline-field')) {
+                const configRight = layoutDialog.querySelector('.config-right');
+                if (configRight) {
+                    const headlineDiv = document.createElement('div');
+                    headlineDiv.id = 'fuxa-layout-headline-field';
+                    headlineDiv.className = 'my-form-field block mb15';
+                    headlineDiv.style.cssText = 'margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.12);';
+                    
+                    const currentHeadline = getFormattedHeadline(liveProjectName);
+                    headlineDiv.innerHTML = `
+                        <span style="display: block; font-size: 12px; font-weight: 600; color: #38bdf8; margin-bottom: 4px;">Dashboard Headline</span>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input id="fuxa-layout-headline-input" type="text" value="${currentHeadline}" 
+                                   placeholder="e.g. Plant 9 TC Monitoring Dashboard" 
+                                   style="width: 250px; height: 32px; padding: 4px 8px; font-size: 13px; border-radius: 3px; background: rgba(255,255,255,0.08); color: #fff; border: 1px solid #475569; outline: none; box-sizing: border-box;" />
+                            <button id="fuxa-layout-headline-apply-btn" type="button"
+                                    style="height: 32px; padding: 0 12px; background: #0284c7; color: #fff; border: none; border-radius: 3px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;">
+                                Apply
+                            </button>
+                        </div>
+                    `;
+                    configRight.prepend(headlineDiv);
+
+                    const headlineInput = headlineDiv.querySelector('#fuxa-layout-headline-input');
+                    const headlineApplyBtn = headlineDiv.querySelector('#fuxa-layout-headline-apply-btn');
+
+                    const saveHeadline = async () => {
+                        const newText = (headlineInput.value || '').trim();
+                        if (!newText) return;
+
+                        // Update dialog header preview
+                        const previewHeader = layoutDialog.querySelector('.header-items-button');
+                        if (previewHeader) {
+                            previewHeader.style.setProperty('justify-content', 'center', 'important');
+                            let btn = previewHeader.querySelector('button, span, div');
+                            if (btn) btn.textContent = newText;
+                        }
+
+                        // Save to backend via /api/project-name
+                        try {
+                            const res = await fetch('api/project-name', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ name: newText })
+                            });
+                            if (res.ok) {
+                                liveProjectName = newText;
+                                updateHeaderBadge(newText);
+                                ensureRuntimeDashboardHeadline();
+                                headlineApplyBtn.textContent = 'Saved! ✓';
+                                headlineApplyBtn.style.background = '#16a34a';
+                                setTimeout(() => {
+                                    headlineApplyBtn.textContent = 'Apply';
+                                    headlineApplyBtn.style.background = '#0284c7';
+                                }, 2000);
+                            }
+                        } catch (err) {}
+                    };
+
+                    headlineApplyBtn.addEventListener('click', saveHeadline);
+                    headlineInput.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter') saveHeadline();
+                    });
+
+                    // Also hook into native Dialog OK button so clicking OK saves the headline too
+                    const layoutOkBtn = layoutDialog.querySelector('.dialog-action button[color="primary"], button[cdkfocusinitial]');
+                    if (layoutOkBtn) {
+                        layoutOkBtn.addEventListener('click', saveHeadline);
                     }
                 }
             }

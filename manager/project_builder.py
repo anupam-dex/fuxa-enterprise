@@ -192,6 +192,16 @@ def generate_fuxa_database(
     proj_title = (project_name.strip() if project_name and project_name.strip() 
                   else f"Plant {plant_id} - {division_name} ({line_name})")
 
+    # Format headline text as requested: "Plant X <Title> Monitoring Dashboard"
+    line_display = line_name.upper() if line_name else "LINE"
+    headline_text = f"Plant {plant_id} {line_display} Monitoring Dashboard"
+    if project_name and project_name.strip():
+        p_clean = project_name.strip()
+        if "dashboard" in p_clean.lower():
+            headline_text = p_clean
+        else:
+            headline_text = f"Plant {plant_id} {p_clean} Monitoring Dashboard"
+
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
 
@@ -211,7 +221,7 @@ def generate_fuxa_database(
 
     # 1. General settings, version & explicit Project Name
     cur.execute("INSERT OR REPLACE INTO general (name, value) VALUES (?, ?);", ("version", "1.00"))
-    cur.execute("INSERT OR REPLACE INTO general (name, value) VALUES (?, ?);", ("name", json.dumps(proj_title)))
+    cur.execute("INSERT OR REPLACE INTO general (name, value) VALUES (?, ?);", ("name", json.dumps(headline_text)))
     
     # Required FuxaServer device (id: '0')
     fuxa_server_dev = {"id": "0", "name": "FUXA Server", "type": "FuxaServer", "property": {}}
@@ -220,16 +230,16 @@ def generate_fuxa_database(
 
     general_data = {
         "version": "1.00",
-        "title": proj_title,
+        "title": headline_text,
         "header": {
-            "title": proj_title,
+            "title": headline_text,
             "alarms": True,
             "login": True
         }
     }
     cur.execute("INSERT OR REPLACE INTO general (name, value) VALUES (?, ?);", ("general", json.dumps(general_data)))
 
-    # Default FUXA Navigation & Top Header Layout with TVS Logo
+    # Default FUXA Navigation & Centered Top Header Layout with Headline & TVS Logo
     view_id = "view_overview"
     layout_data = {
         "start": view_id,
@@ -241,21 +251,27 @@ def generate_fuxa_database(
             ]
         },
         "header": {
-            "title": proj_title,
+            "title": headline_text,
             "alarms": "item.notifymode-fix",
             "infos": "item.notifymode-fix",
             "bkcolor": "#0f172a",
             "fgcolor": "#ffffff",
             "height": 48,
-            "itemsAnchor": "left",
+            "fontSize": 15,
+            "itemsAnchor": "center",
             "items": [
                 {
-                    "id": "tvs_header_logo",
-                    "type": "image",
-                    "image": "assets/images/tvs-logo.svg",
-                    "height": 30,
+                    "id": "header_headline",
+                    "type": "label",
+                    "text": headline_text,
+                    "property": {
+                        "text": headline_text
+                    },
                     "marginLeft": 12,
-                    "marginRight": 16
+                    "marginRight": 12,
+                    "height": 34,
+                    "bkcolor": "transparent",
+                    "fgcolor": "#ffffff"
                 }
             ]
         }
@@ -299,7 +315,7 @@ def generate_fuxa_database(
         f'</g>'
         f'<line x1="245" y1="36" x2="245" y2="92" stroke="#475569" stroke-width="1.5"/>'
         f'<text fill="#ffffff" font-size="24" font-family="system-ui, sans-serif" font-weight="700" x="265" y="60">'
-        f'{proj_title}</text>'
+        f'{headline_text}</text>'
         f'<text fill="#10b981" font-size="13" font-family="system-ui, sans-serif" font-weight="600" x="265" y="84">'
         f'🟢 Central Storage Bridge Active (:4845) &bull; {len(storage_tags)} Storage Tags Ingested &bull; Plant {plant_id} ({line_name})</text>'
         f'</g></svg>'

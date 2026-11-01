@@ -789,6 +789,25 @@ function startFuxa() {
                                         } catch (e) {}
                                     }
                                 });
+                                db.get("SELECT value FROM general WHERE name = 'layout';", (err, row) => {
+                                    if (row && row.value) {
+                                        try {
+                                            const l = JSON.parse(row.value);
+                                            if (l.header) {
+                                                l.header.title = newName;
+                                                if (Array.isArray(l.header.items)) {
+                                                    for (const it of l.header.items) {
+                                                        if (it.id === 'header_headline' || it.type === 'label') {
+                                                            it.text = newName;
+                                                            if (it.property) it.property.text = newName;
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            db.run("UPDATE general SET value = ? WHERE name = 'layout';", [JSON.stringify(l)]);
+                                        } catch (e) {}
+                                    }
+                                });
                             });
                             db.close();
                             logger.info(`[FUXA-Database] Updated project name to "${newName}" in ${dbFile}`);
