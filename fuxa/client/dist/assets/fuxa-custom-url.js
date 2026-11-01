@@ -106,9 +106,8 @@
                     const portContainer = portInput.closest('.my-form-field') || portInput.parentElement;
                     if (portContainer) {
                         const customDiv = document.createElement('div');
-                        customDiv.className = 'my-form-field block mt15 custom-url-setting-field';
-                        // Subtle, neat outline matching FUXA Material theme with indigo accent bar
-                        customDiv.style.cssText = 'margin-top: 15px; width: 320px; box-sizing: border-box; padding: 10px 12px; background: rgba(0, 0, 0, 0.02); border: 1px solid rgba(63, 81, 181, 0.2); border-left: 3px solid #3f51b5; border-radius: 3px;';
+                        customDiv.className = 'custom-url-setting-field';
+                        customDiv.style.cssText = 'width: 320px;';
                         
                         const currentSubpath = getBasePath();
                         const hostUrl = getHostUrl();
@@ -117,50 +116,44 @@
                         const fullEditorUrl = `${hostUrl}${currentSubpath}/editor`;
 
                         customDiv.innerHTML = `
-                            <!-- Subpath Editing Section -->
-                            <div style="margin-bottom: 10px;">
-                                <span style="display: block; font-size: 12px; font-weight: 500; opacity: 0.85; margin-bottom: 4px; color: inherit;">
-                                    Custom URL / Subpath
-                                </span>
-                                <div style="display: flex; gap: 6px; align-items: center;">
+                            <!-- Custom URL / Subpath Setting -->
+                            <div class="my-form-field block mt15 system-input">
+                                <span>Custom URL / Subpath</span>
+                                <div style="display: flex; gap: 6px; align-items: center; width: 320px;">
                                     <input id="fuxa-subpath-input" type="text" value="${currentSubpath}" placeholder="/p9/ps/ems" 
-                                           style="flex: 1; height: 28px; padding: 3px 6px; font-size: 13px; font-family: inherit; border: 1px solid #ccc; border-radius: 2px; background-color: var(--formInputBackground, #fff); color: var(--formInputColor, #111); box-sizing: border-box; user-select: text !important; -webkit-user-select: text !important; pointer-events: auto !important; cursor: text !important;" />
+                                           style="flex: 1; height: 32px; padding: 4px 8px; font-size: 13px; font-family: monospace; border: none; border-radius: 2px; background-color: var(--formInputBackground, rgba(255,255,255,0.06)); color: var(--formInputColor, inherit); box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important; cursor: text !important;" />
                                     <button id="fuxa-subpath-save-btn" type="button" 
-                                            style="height: 28px; padding: 0 10px; font-size: 12px; font-weight: 500; border: 1px solid #3f51b5; border-radius: 2px; background: #3f51b5; color: #fff; cursor: pointer; line-height: 26px; white-space: nowrap;">
+                                            style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border: none; border-radius: 2px; background: #3f51b5; color: #fff; cursor: pointer; white-space: nowrap; transition: background 0.2s;">
                                         Apply
                                     </button>
                                 </div>
-                                <span style="display: block; font-size: 10px; opacity: 0.55; margin-top: 3px;">
-                                    Port 80 clean OT subpath (e.g. /p9/ps/ems)
-                                </span>
                             </div>
 
-                            <!-- Direct Page URLs Section -->
-                            <div style="border-top: 1px solid rgba(0, 0, 0, 0.08); padding-top: 8px; margin-top: 8px;">
-                                <span style="display: block; font-size: 11px; opacity: 0.7; margin-bottom: 3px;">
-                                    Operator View URL
-                                </span>
-                                <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 6px;">
+                            <!-- Operator View URL -->
+                            <div class="my-form-field block mt15 system-input">
+                                <span>Operator View URL (Port 80)</span>
+                                <div style="display: flex; gap: 6px; align-items: center; width: 320px;">
                                     <input id="fuxa-view-url-text" readonly type="text" value="${fullViewUrl}" 
-                                           style="flex: 1; height: 26px; padding: 2px 6px; font-size: 11px; font-family: monospace; border: 1px solid #ddd; border-radius: 2px; background: rgba(0, 0, 0, 0.03); color: inherit; box-sizing: border-box; user-select: text !important; -webkit-user-select: text !important;" />
+                                           style="flex: 1; height: 28px; padding: 2px 8px; font-size: 11px; font-family: monospace; border: none; border-radius: 2px; background-color: var(--formInputBackground, rgba(255,255,255,0.04)); color: var(--formInputColor, inherit); opacity: 0.85; box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important;" />
                                     <button id="fuxa-btn-copy-view" type="button" 
-                                            style="height: 26px; padding: 0 8px; font-size: 11px; border: 1px solid #aaa; border-radius: 2px; background: transparent; color: inherit; cursor: pointer; white-space: nowrap;">
+                                            style="height: 28px; padding: 0 10px; font-size: 11px; border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 2px; background: transparent; color: inherit; cursor: pointer; white-space: nowrap;">
                                         Copy
                                     </button>
                                     <a id="fuxa-link-open-view" href="${fullViewUrl}" target="_blank" 
-                                       style="height: 26px; padding: 0 8px; font-size: 11px; border: 1px solid #aaa; border-radius: 2px; background: transparent; color: inherit; text-decoration: none; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center;">
+                                       style="height: 28px; padding: 0 10px; font-size: 11px; border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 2px; background: transparent; color: inherit; text-decoration: none; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center;">
                                         Open ↗
                                     </a>
                                 </div>
+                            </div>
 
-                                <span style="display: block; font-size: 11px; opacity: 0.7; margin-bottom: 3px;">
-                                    Editor URL
-                                </span>
-                                <div style="display: flex; gap: 6px; align-items: center;">
+                            <!-- Editor Clean URL -->
+                            <div class="my-form-field block mt10 system-input">
+                                <span>Editor Clean URL (Port 80)</span>
+                                <div style="display: flex; gap: 6px; align-items: center; width: 320px;">
                                     <input id="fuxa-editor-url-text" readonly type="text" value="${fullEditorUrl}" 
-                                           style="flex: 1; height: 26px; padding: 2px 6px; font-size: 11px; font-family: monospace; border: 1px solid #ddd; border-radius: 2px; background: rgba(0, 0, 0, 0.03); color: inherit; box-sizing: border-box; user-select: text !important; -webkit-user-select: text !important;" />
+                                           style="flex: 1; height: 28px; padding: 2px 8px; font-size: 11px; font-family: monospace; border: none; border-radius: 2px; background-color: var(--formInputBackground, rgba(255,255,255,0.04)); color: var(--formInputColor, inherit); opacity: 0.85; box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important;" />
                                     <button id="fuxa-btn-copy-editor" type="button" 
-                                            style="height: 26px; padding: 0 8px; font-size: 11px; border: 1px solid #aaa; border-radius: 2px; background: transparent; color: inherit; cursor: pointer; white-space: nowrap;">
+                                            style="height: 28px; padding: 0 10px; font-size: 11px; border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 2px; background: transparent; color: inherit; cursor: pointer; white-space: nowrap;">
                                         Copy
                                     </button>
                                 </div>
