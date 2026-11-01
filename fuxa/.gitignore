@@ -78,6 +78,8 @@ _db/
 _pkg/
 #resources images
 _images/
+!server/_images/Common/
+!server/_images/Common/**
 
 _reports/
 

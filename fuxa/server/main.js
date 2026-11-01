@@ -499,10 +499,19 @@ for (const shellPath of SHELL_ROUTES) {
     app.use(shellPath, express.static(settings.httpStatic));
 }
 // while paths that have to serve non-angular paths are here
-app.use(BASE_PATH + '/' + settings.httpUploadFileStatic, express.static(settings.uploadFileDir));
-app.use(BASE_PATH + '/_images', express.static(settings.imagesFileDir));
-app.use(BASE_PATH + '/_widgets', express.static(settings.widgetsFileDir));
-app.use(BASE_PATH + '/snapshots', snapshotAuth, express.static(settings.webcamSnapShotsDir));
+const defaultImagesDir = path.resolve(__dirname, '_images');
+if (BASE_PATH) {
+    app.use(BASE_PATH + '/' + settings.httpUploadFileStatic, express.static(settings.uploadFileDir));
+    app.use(BASE_PATH + '/_images', express.static(settings.imagesFileDir));
+    app.use(BASE_PATH + '/_images', express.static(defaultImagesDir));
+    app.use(BASE_PATH + '/_widgets', express.static(settings.widgetsFileDir));
+    app.use(BASE_PATH + '/snapshots', snapshotAuth, express.static(settings.webcamSnapShotsDir));
+}
+app.use('/' + settings.httpUploadFileStatic, express.static(settings.uploadFileDir));
+app.use('/_images', express.static(settings.imagesFileDir));
+app.use('/_images', express.static(defaultImagesDir));
+app.use('/_widgets', express.static(settings.widgetsFileDir));
+app.use('/snapshots', snapshotAuth, express.static(settings.webcamSnapShotsDir));
 
 var accessLogStream = fs.createWriteStream(settings.logDir + '/api.log', { flags: 'a' });
 if (runtime.settings.logApiLevel !== 'none') {

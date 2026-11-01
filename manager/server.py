@@ -294,6 +294,18 @@ def _launch_fuxa_instance(instance_id: str, port: int, work_dir: str, subpath: s
         work_dir = os.path.join(INSTANCES_DIR, f"port_{port}")
     os.makedirs(work_dir, exist_ok=True)
 
+    # Ensure common resources folder with TVS logo is provisioned in work_dir
+    common_img_dir = os.path.join(work_dir, "_images", "Common")
+    os.makedirs(common_img_dir, exist_ok=True)
+    src_common = os.path.join(BASE_DIR, "fuxa", "server", "_images", "Common")
+    if os.path.exists(src_common):
+        for item in os.listdir(src_common):
+            s = os.path.join(src_common, item)
+            d = os.path.join(common_img_dir, item)
+            if os.path.isfile(s):
+                import shutil
+                shutil.copy2(s, d)
+
     env = os.environ.copy()
     env["BASE_PATH"] = subpath
     env["NODE_OPTIONS"] = "--max-old-space-size=4096"

@@ -48,9 +48,40 @@
         return parseInt(localStorage.getItem('fuxa_target_port') || '9610', 10);
     }
 
+    function ensureTvsHeaderLogo() {
+        // 1. Editor / Device / Settings top header bar
+        const headerPanel = document.querySelector('app-header .header-panel, .header-panel');
+        if (headerPanel && !document.getElementById('fuxa-header-tvs-logo')) {
+            const tvsLogo = document.createElement('div');
+            tvsLogo.id = 'fuxa-header-tvs-logo';
+            tvsLogo.style.cssText = 'display: inline-flex; align-items: center; margin-right: 14px; margin-left: 8px; height: 32px; cursor: default; user-select: none; -webkit-user-select: none;';
+            tvsLogo.title = 'TVS SCADA Enterprise';
+            tvsLogo.innerHTML = `
+                <img src="assets/images/tvs-logo.svg" alt="TVS" style="height: 24px; width: auto; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));" 
+                     onerror="this.src='/_images/Common/tvs-logo.svg'" />
+            `;
+            headerPanel.prepend(tvsLogo);
+        }
+
+        // 2. Runtime / HMI View top header bar
+        const runtimeHeader = document.querySelector('.header .header-items-button, app-home .header-items-button, .header');
+        if (runtimeHeader && !document.getElementById('fuxa-runtime-tvs-logo')) {
+            const logoDiv = document.createElement('div');
+            logoDiv.id = 'fuxa-runtime-tvs-logo';
+            logoDiv.style.cssText = 'display: inline-flex; align-items: center; margin-left: 12px; margin-right: 16px; height: 100%; vertical-align: middle;';
+            logoDiv.title = 'TVS SCADA Enterprise';
+            logoDiv.innerHTML = `
+                <img src="assets/images/tvs-logo.svg" alt="TVS" style="height: 26px; width: auto; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));" 
+                     onerror="this.src='/_images/Common/tvs-logo.svg'" />
+            `;
+            runtimeHeader.prepend(logoDiv);
+        }
+    }
+
     function updateHeaderBadge(name) {
+        ensureTvsHeaderLogo();
         if (!name) return;
-        document.title = `${name} - FUXA SCADA`;
+        document.title = `${name} - TVS SCADA`;
         const headerPanel = document.querySelector('app-header .header-panel, .header-panel');
         if (headerPanel) {
             let badge = document.getElementById('fuxa-header-project-badge');
@@ -385,12 +416,17 @@
     }
 
     // Init
+    ensureTvsHeaderLogo();
     fetchLiveProjectName();
+    setInterval(ensureTvsHeaderLogo, 1500);
+
     window.addEventListener('DOMContentLoaded', () => {
+        ensureTvsHeaderLogo();
         fetchLiveProjectName();
         observeSettingsDialog();
     });
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        ensureTvsHeaderLogo();
         fetchLiveProjectName();
         observeSettingsDialog();
     }
