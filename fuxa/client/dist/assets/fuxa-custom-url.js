@@ -70,18 +70,23 @@
             headerPanel.prepend(tvsLogo);
         }
 
-        // 2. Runtime / HMI View top header bar
+        // 2. Runtime / HMI View top header bar (positioned right next to hamburger menu)
         const runtimeHeader = document.querySelector('.header, app-home .header');
+        const headerMenu = document.querySelector('.header .header-menu, app-home .header-menu');
         if (runtimeHeader && !document.getElementById('fuxa-runtime-tvs-logo')) {
             const logoDiv = document.createElement('div');
             logoDiv.id = 'fuxa-runtime-tvs-logo';
-            logoDiv.style.cssText = 'position: absolute; left: 16px; top: 0; bottom: 0; display: inline-flex; align-items: center; z-index: 10; cursor: default; user-select: none;';
+            logoDiv.style.cssText = 'display: inline-flex; align-items: center; margin-left: 10px; margin-right: 16px; height: 100%; cursor: default; user-select: none; z-index: 5; flex-shrink: 0;';
             logoDiv.title = 'TVS SCADA Enterprise';
             logoDiv.innerHTML = `
-                <img src="assets/images/tvs-logo.svg" alt="TVS" style="height: 26px; width: auto; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));" 
+                <img src="assets/images/tvs-logo.svg" alt="TVS" style="height: 28px; width: auto; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));" 
                      onerror="this.src='/_images/Common/tvs-logo.svg'" />
             `;
-            runtimeHeader.prepend(logoDiv);
+            if (headerMenu && headerMenu.parentNode === runtimeHeader) {
+                runtimeHeader.insertBefore(logoDiv, headerMenu.nextSibling);
+            } else {
+                runtimeHeader.prepend(logoDiv);
+            }
         }
 
         ensureRuntimeDashboardHeadline();

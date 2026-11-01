@@ -125,7 +125,7 @@ function renderInstancesList() {
 
         // OT Clean URLs without port numbers (Port 80 Reverse Proxy)
         const otEditor = `${proto}//${host}${inst.subpath}/editor`;
-        const otView = `${proto}//${host}${inst.subpath}/view`;
+        const otView = `${proto}//${host}${inst.subpath}/home`;
 
         row.innerHTML = `
             <!-- Col 1: Server Identity & Plant -->

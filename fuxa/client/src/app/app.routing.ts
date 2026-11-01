@@ -1,4 +1,4 @@
-﻿import { Routes, RouterModule } from '@angular/router';
+import { Routes, RouterModule } from '@angular/router';
 
 import { AuthGuard } from './auth.guard';
 
@@ -44,7 +44,7 @@ const appRoutes: Routes = [
     { path: 'language', component: LanguageTextListComponent, canActivate: [AuthGuard] },
     { path: 'logs', component: LogsViewComponent, canActivate: [AuthGuard] },
     { path: 'events', component: LogsViewComponent, canActivate: [AuthGuard] },
-    { path: 'view', component: ViewComponent },
+    { path: 'view', redirectTo: 'home' },
     { path: 'mapsLocations', component: MapsLocationListComponent, canActivate: [AuthGuard] },
     { path: 'flows', component: NodeRedFlowsComponent, canActivate: [AuthGuard] },
     { path: 'apikeys', component: ApiKeysListComponent, canActivate: [AuthGuard] },
