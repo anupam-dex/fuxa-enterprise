@@ -245,7 +245,7 @@ def generate_fuxa_database(
     layout_data = {
         "start": view_id,
         "navigation": {
-            "mode": "fix",
+            "mode": "over",
             "type": "inline",
             "items": [
                 {"icon": "home", "view": view_id, "link": "", "text": "Overview"}
@@ -444,6 +444,20 @@ def sync_tags_to_view_database(target_dir: str, plant_id: int, base_dir: str = N
                     svg_clean = re.sub(r'<text [^>]*>.*?</text>', '', svg_clean)
                     v_obj["svgcontent"] = svg_clean
                     cur.execute("UPDATE views SET value = ? WHERE name = ?;", (json.dumps(v_obj), v_name))
+            except Exception:
+                pass
+
+        # Ensure navigation mode is 'over' so hamburger menu is visible
+        cur.execute("SELECT value FROM general WHERE name = 'layout';")
+        lrow = cur.fetchone()
+        if lrow:
+            try:
+                layout_dict = json.loads(lrow[0])
+                nav = layout_dict.get("navigation", {})
+                if nav.get("mode") == "fix":
+                    nav["mode"] = "over"
+                    layout_dict["navigation"] = nav
+                    cur.execute("UPDATE general SET value = ? WHERE name = 'layout';", (json.dumps(layout_dict),))
             except Exception:
                 pass
     except Exception as e:

@@ -4,6 +4,11 @@
  */
 
 (function () {
+    if (window.__FUXA_CUSTOM_URL_LOADED__) {
+        return;
+    }
+    window.__FUXA_CUSTOM_URL_LOADED__ = true;
+
     console.log('[FUXA-Enterprise] Settings Custom URL & Project Manager active.');
 
     // Reload loop circuit breaker: prevents UI flickering / infinite reload loops
@@ -16,7 +21,6 @@
         sessionStorage.setItem(RELOAD_KEY, JSON.stringify(history));
         if (history.length > 3) {
             console.warn('[FUXA] Infinite reload loop detected! Throttling window.location.reload to maintain UI stability.');
-            const origReload = window.location.reload.bind(window.location);
             window.location.reload = function() {
                 console.warn('[FUXA] Suppressed window.location.reload() to stop page flickering loop.');
             };
@@ -24,6 +28,7 @@
     } catch (e) {}
 
     let liveProjectName = localStorage.getItem('fuxa_project_name') || '';
+    let isMutating = false;
 
     function getBasePath() {
         if (window.__BASE_PATH__) return window.__BASE_PATH__;
@@ -48,50 +53,6 @@
         return parseInt(localStorage.getItem('fuxa_target_port') || '9610', 10);
     }
 
-    function ensureTvsHeaderLogo() {
-        // Clean up any stray logo or badge mistakenly injected outside app-header
-        document.querySelectorAll('#fuxa-header-tvs-logo, #fuxa-header-project-badge').forEach(el => {
-            if (!el.closest('app-header')) {
-                el.remove();
-            }
-        });
-
-        // 1. Editor / Device / Settings top header bar (strictly scoped to app-header)
-        const headerPanel = document.querySelector('app-header .header-panel');
-        if (headerPanel && !headerPanel.querySelector('#fuxa-header-tvs-logo')) {
-            const tvsLogo = document.createElement('div');
-            tvsLogo.id = 'fuxa-header-tvs-logo';
-            tvsLogo.style.cssText = 'display: inline-flex; align-items: center; margin-right: 14px; margin-left: 8px; height: 32px; cursor: default; user-select: none; -webkit-user-select: none;';
-            tvsLogo.title = 'TVS SCADA Enterprise';
-            tvsLogo.innerHTML = `
-                <img src="assets/images/tvs-logo.svg" alt="TVS" style="height: 24px; width: auto; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));" 
-                     onerror="this.src='/_images/Common/tvs-logo.svg'" />
-            `;
-            headerPanel.prepend(tvsLogo);
-        }
-
-        // 2. Runtime / HMI View top header bar (positioned right next to hamburger menu)
-        const runtimeHeader = document.querySelector('.header, app-home .header');
-        const headerMenu = document.querySelector('.header .header-menu, app-home .header-menu');
-        if (runtimeHeader && !document.getElementById('fuxa-runtime-tvs-logo')) {
-            const logoDiv = document.createElement('div');
-            logoDiv.id = 'fuxa-runtime-tvs-logo';
-            logoDiv.style.cssText = 'display: inline-flex; align-items: center; margin-left: 10px; margin-right: 16px; height: 100%; cursor: default; user-select: none; z-index: 5; flex-shrink: 0;';
-            logoDiv.title = 'TVS SCADA Enterprise';
-            logoDiv.innerHTML = `
-                <img src="assets/images/tvs-logo.svg" alt="TVS" style="height: 28px; width: auto; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));" 
-                     onerror="this.src='/_images/Common/tvs-logo.svg'" />
-            `;
-            if (headerMenu && headerMenu.parentNode === runtimeHeader) {
-                runtimeHeader.insertBefore(logoDiv, headerMenu.nextSibling);
-            } else {
-                runtimeHeader.prepend(logoDiv);
-            }
-        }
-
-        ensureRuntimeDashboardHeadline();
-    }
-
     function getFormattedHeadline(rawName) {
         if (!rawName) return 'Plant Monitoring Dashboard';
         const trimmed = rawName.trim();
@@ -103,31 +64,89 @@
         const itemsContainer = document.querySelector('.header-items-button, app-home .header-items-button');
         if (!itemsContainer) return;
 
+        const currentHeadline = getFormattedHeadline(liveProjectName);
+        if (itemsContainer.dataset.headlineApplied === currentHeadline) {
+            return;
+        }
+        itemsContainer.dataset.headlineApplied = currentHeadline;
+
         // Force center alignment for the header items container
         itemsContainer.style.setProperty('justify-content', 'center', 'important');
         itemsContainer.style.setProperty('text-align', 'center', 'important');
         itemsContainer.style.setProperty('flex', '1', 'important');
 
-        const currentHeadline = getFormattedHeadline(liveProjectName);
-
         // Check if there is an existing headline element or label item
         let headlineEl = itemsContainer.querySelector('#header_headline, #fuxa-runtime-headline');
         if (headlineEl) {
             headlineEl.textContent = currentHeadline;
-            headlineEl.style.cssText = 'display: inline-flex; align-items: center; font-size: 16px !important; font-weight: 700 !important; color: #ffffff !important; letter-spacing: 0.6px !important; text-transform: uppercase !important; font-family: system-ui, -apple-system, sans-serif !important; user-select: none; pointer-events: default; background: transparent !important; border: none !important; box-shadow: none !important;';
+            if (!headlineEl.dataset.styled) {
+                headlineEl.dataset.styled = 'true';
+                headlineEl.style.cssText = 'display: inline-flex; align-items: center; font-size: 16px !important; font-weight: 700 !important; color: #ffffff !important; letter-spacing: 0.6px !important; text-transform: uppercase !important; font-family: system-ui, -apple-system, sans-serif !important; user-select: none; pointer-events: default; background: transparent !important; border: none !important; box-shadow: none !important;';
+            }
         } else {
-            // Check if there are other label items in itemsContainer
             const firstButton = itemsContainer.querySelector('button.mat-button, button');
             if (firstButton && (firstButton.textContent.trim().toLowerCase().includes('dashboard') || firstButton.id === 'header_headline')) {
                 firstButton.textContent = currentHeadline;
-                firstButton.style.cssText = 'display: inline-flex; align-items: center; font-size: 16px !important; font-weight: 700 !important; color: #ffffff !important; letter-spacing: 0.6px !important; text-transform: uppercase !important; font-family: system-ui, -apple-system, sans-serif !important; user-select: none; background: transparent !important; border: none !important; box-shadow: none !important;';
+                if (!firstButton.dataset.styled) {
+                    firstButton.dataset.styled = 'true';
+                    firstButton.style.cssText = 'display: inline-flex; align-items: center; font-size: 16px !important; font-weight: 700 !important; color: #ffffff !important; letter-spacing: 0.6px !important; text-transform: uppercase !important; font-family: system-ui, -apple-system, sans-serif !important; user-select: none; background: transparent !important; border: none !important; box-shadow: none !important;';
+                }
             } else {
                 headlineEl = document.createElement('div');
                 headlineEl.id = 'fuxa-runtime-headline';
                 headlineEl.textContent = currentHeadline;
+                headlineEl.dataset.styled = 'true';
                 headlineEl.style.cssText = 'display: inline-flex; align-items: center; font-size: 16px !important; font-weight: 700 !important; color: #ffffff !important; letter-spacing: 0.6px !important; text-transform: uppercase !important; font-family: system-ui, -apple-system, sans-serif !important; user-select: none; margin: 0 12px;';
                 itemsContainer.appendChild(headlineEl);
             }
+        }
+    }
+
+    function ensureTvsHeaderLogo() {
+        if (isMutating) return;
+        isMutating = true;
+        try {
+            // 1. Editor / Device / Settings top header bar (strictly scoped to app-header)
+            const headerPanel = document.querySelector('app-header .header-panel');
+            if (headerPanel && !headerPanel.querySelector('#fuxa-header-tvs-logo')) {
+                const tvsLogo = document.createElement('div');
+                tvsLogo.id = 'fuxa-header-tvs-logo';
+                tvsLogo.style.cssText = 'display: inline-flex; align-items: center; margin-right: 14px; margin-left: 8px; height: 32px; cursor: default; user-select: none; -webkit-user-select: none; flex-shrink: 0;';
+                tvsLogo.title = 'TVS SCADA Enterprise';
+                tvsLogo.innerHTML = `
+                    <img src="assets/images/tvs-logo.svg" alt="TVS" style="height: 24px; width: auto; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4));" 
+                         onerror="this.src='/_images/Common/tvs-logo.svg'" />
+                `;
+                headerPanel.prepend(tvsLogo);
+            }
+
+            // 2. Runtime / HMI View top header bar (positioned right next to hamburger menu)
+            const runtimeHeader = document.querySelector('.header, app-home .header');
+            if (runtimeHeader) {
+                const headerMenu = runtimeHeader.querySelector('.header-menu');
+                let logoDiv = document.getElementById('fuxa-runtime-tvs-logo');
+                if (!logoDiv) {
+                    logoDiv = document.createElement('div');
+                    logoDiv.id = 'fuxa-runtime-tvs-logo';
+                    logoDiv.style.cssText = 'display: inline-flex; align-items: center; margin-left: 10px; margin-right: 16px; height: 100%; cursor: default; user-select: none; z-index: 5; flex-shrink: 0;';
+                    logoDiv.title = 'TVS SCADA Enterprise';
+                    logoDiv.innerHTML = `
+                        <img src="assets/images/tvs-logo.svg" alt="TVS" style="height: 28px; width: auto; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3));" 
+                             onerror="this.src='/_images/Common/tvs-logo.svg'" />
+                    `;
+                    if (headerMenu && headerMenu.parentNode === runtimeHeader) {
+                        runtimeHeader.insertBefore(logoDiv, headerMenu.nextSibling);
+                    } else {
+                        runtimeHeader.prepend(logoDiv);
+                    }
+                } else if (headerMenu && headerMenu.parentNode === runtimeHeader && logoDiv.previousElementSibling !== headerMenu) {
+                    runtimeHeader.insertBefore(logoDiv, headerMenu.nextSibling);
+                }
+            }
+
+            ensureRuntimeDashboardHeadline();
+        } finally {
+            isMutating = false;
         }
     }
 
@@ -274,18 +293,11 @@
         return '';
     }
 
-    // Remove any legacy/stale Page URL button from the main header toolbar
     function removeHeaderPageUrlButton() {
-        const btns = document.querySelectorAll('button, a, div');
-        btns.forEach(btn => {
-            if (btn.id === 'fuxa-header-page-url-btn' || 
-                (btn.textContent && btn.textContent.trim().includes('Page URL') && !btn.closest('.custom-url-setting-field'))) {
-                if (btn.closest('app-header') || btn.closest('.header-left') || btn.closest('.header-right') || btn.closest('.my-toolbar') || btn.parentNode === document.querySelector('.header-left')) {
-                    btn.remove();
-                }
-            }
-        });
-        updateHeaderBadge(liveProjectName);
+        const btn = document.getElementById('fuxa-header-page-url-btn');
+        if (btn) {
+            btn.remove();
+        }
     }
 
     const STATUTORY_WARNING_TEXT = "Adding connections facility is no longer supported; redirect to storage server instance for adding field PLC or gateway device. Once they added in respective storage server, device will be listed to the view page server automatically.";
@@ -350,356 +362,391 @@
     }
 
     function enforceViewServerRestrictions() {
-        // 1. Remove "Plugins" button card from Setup / Settings dialog
-        document.querySelectorAll('app-setup .btn-card, .dlg-container .btn-card').forEach(card => {
-            const btn = card.querySelector('button');
-            if (!btn) return;
-            const text = btn.textContent ? btn.textContent.toLowerCase() : '';
-            const icon = card.querySelector('mat-icon');
-            const iconText = icon ? icon.textContent.trim().toLowerCase() : '';
-            if (text.includes('plugin') || iconText === 'extension') {
-                card.style.setProperty('display', 'none', 'important');
-            }
-        });
-
-        // 2. Intercept "Connections" button in Setup / Settings dialog with Statutory Warning
-        document.querySelectorAll('app-setup .btn-card, .dlg-container .btn-card').forEach(card => {
-            const btn = card.querySelector('button');
-            if (!btn) return;
-            const text = btn.textContent ? btn.textContent.toLowerCase() : '';
-            const icon = card.querySelector('mat-icon');
-            const iconText = icon ? icon.textContent.trim().toLowerCase() : '';
-            if (text.includes('connection') || iconText === 'lan') {
-                if (!btn.dataset.statutoryHooked) {
-                    btn.dataset.statutoryHooked = 'true';
-                    btn.addEventListener('click', (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        // Close setup dialog
-                        const closeBtn = document.querySelector('app-setup .dialog-close-btn, .dlg-container .dialog-close-btn');
-                        if (closeBtn) closeBtn.click();
-                        showStatutoryWarningModal();
-                    }, true);
-                }
-            }
-        });
-
-        // 3. In /device view (Connections page)
-        if (window.location.pathname.includes('/device')) {
-            // Hide floating "Add Item / Device" FAB button
-            document.querySelectorAll('.fab-add, button.fab-add, mat-fab').forEach(el => {
-                el.style.setProperty('display', 'none', 'important');
-            });
-            // Hide table add buttons in device list
-            document.querySelectorAll('button[mattooltip*="add"], button[mattooltip*="Add"], button[mattooltip*="aggiungi"]').forEach(el => {
-                if (el.closest('app-device-map, app-device-list, app-device')) {
-                    el.style.setProperty('display', 'none', 'important');
-                }
-            });
-            // Hide any plugin notice or open-plugin banner in /device
-            document.querySelectorAll('.device-plugins-notice, .plugins-notice').forEach(el => {
-                el.style.setProperty('display', 'none', 'important');
-            });
-
-            // Inject Statutory Warning Banner at top of /device if not present
-            const workPanel = document.querySelector('app-device .work-panel, app-device');
-            if (workPanel && !document.getElementById('fuxa-statutory-device-banner')) {
-                const banner = document.createElement('div');
-                banner.id = 'fuxa-statutory-device-banner';
-                banner.style.cssText = 'background: rgba(234, 179, 8, 0.12); border: 1px solid rgba(234, 179, 8, 0.4); border-radius: 6px; padding: 12px 18px; margin: 12px 16px; display: flex; align-items: center; gap: 12px; color: #fef08a; font-size: 13px; font-weight: 500; font-family: system-ui, -apple-system, sans-serif; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); z-index: 100;';
-                banner.innerHTML = `
-                    <span style="font-size: 22px; line-height: 1;">⚠️</span>
-                    <div style="flex: 1; line-height: 1.5;">
-                        <strong style="color: #facc15; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 2px;">Statutory Restriction: Read-Only Mapped View</strong>
-                        Adding connections facility is no longer supported; redirect to storage server instance for adding field PLC or gateway device. Once they added in respective storage server, device will be listed to the view page server automatically.
-                    </div>
-                `;
-                workPanel.prepend(banner);
-            }
-        }
-
-        // 4. If URL ends with /plugins, redirect to /editor and display warning
-        if (window.location.pathname.includes('/plugins')) {
-            window.location.href = getBasePath() + '/editor';
-            setTimeout(showStatutoryWarningModal, 400);
-        }
-    }
-
-    // Observe Settings Dialog (⚙️) to inject Custom Subpath & Page URLs card
-    function observeSettingsDialog() {
-        removeHeaderPageUrlButton();
-        enforceViewServerRestrictions();
-        const observer = new MutationObserver(() => {
-            removeHeaderPageUrlButton();
-            enforceViewServerRestrictions();
-            const dialog = document.querySelector('app-app-settings, .mat-mdc-dialog-container');
-            if (dialog && !dialog.querySelector('.custom-url-setting-field')) {
-                const portInput = dialog.querySelector('input[numberonly], input[disabled]');
-                if (portInput) {
-                    const portContainer = portInput.closest('.my-form-field') || portInput.parentElement;
-                    if (portContainer) {
-                        const customDiv = document.createElement('div');
-                        customDiv.className = 'custom-url-setting-field';
-                        customDiv.style.cssText = 'width: 320px;';
-                        
-                        const currentSubpath = getBasePath();
-                        const currentProjectName = liveProjectName || 'EMS';
-                        const hostUrl = getHostUrl();
-                        const viewName = getCurrentViewName();
-                        const fullViewUrl = viewName ? `${hostUrl}${currentSubpath}/home/${viewName}` : `${hostUrl}${currentSubpath}/home`;
-                        const fullEditorUrl = `${hostUrl}${currentSubpath}/editor`;
-
-                        customDiv.innerHTML = `
-                            <!-- Project Name Setting -->
-                            <div class="my-form-field block mt15 system-input">
-                                <span>Project Name</span>
-                                <div style="display: flex; gap: 6px; align-items: center; width: 320px;">
-                                    <input id="fuxa-project-name-input" type="text" value="${currentProjectName}" placeholder="e.g. EMS" 
-                                           style="flex: 1; height: 32px; padding: 4px 8px; font-size: 13px; font-family: inherit; border: none; border-radius: 2px; background-color: var(--formInputBackground, rgba(255,255,255,0.06)); color: var(--formInputColor, inherit); box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important; cursor: text !important;" />
-                                </div>
-                            </div>
-
-                            <!-- Custom URL / Subpath Setting -->
-                            <div class="my-form-field block mt15 system-input">
-                                <span>Custom URL / Subpath</span>
-                                <div style="display: flex; gap: 6px; align-items: center; width: 320px;">
-                                    <input id="fuxa-subpath-input" type="text" value="${currentSubpath}" placeholder="/p9/ps/ems" 
-                                           style="flex: 1; height: 32px; padding: 4px 8px; font-size: 13px; font-family: monospace; border: none; border-radius: 2px; background-color: var(--formInputBackground, rgba(255,255,255,0.06)); color: var(--formInputColor, inherit); box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important; cursor: text !important;" />
-                                    <button id="fuxa-subpath-save-btn" type="button" 
-                                            style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border: none; border-radius: 2px; background: #3f51b5; color: #fff; cursor: pointer; white-space: nowrap; transition: background 0.2s;">
-                                        Apply
-                                    </button>
-                                </div>
-                            </div>
-
-                            <!-- Operator View URL -->
-                            <div class="my-form-field block mt15 system-input">
-                                <span>Operator View URL (Port 80)</span>
-                                <div style="display: flex; gap: 6px; align-items: center; width: 320px;">
-                                    <input id="fuxa-view-url-text" readonly type="text" value="${fullViewUrl}" 
-                                           style="flex: 1; height: 28px; padding: 2px 8px; font-size: 11px; font-family: monospace; border: none; border-radius: 2px; background-color: var(--formInputBackground, rgba(255,255,255,0.04)); color: var(--formInputColor, inherit); opacity: 0.85; box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important;" />
-                                    <button id="fuxa-btn-copy-view" type="button" 
-                                            style="height: 28px; padding: 0 10px; font-size: 11px; border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 2px; background: transparent; color: inherit; cursor: pointer; white-space: nowrap;">
-                                        Copy
-                                    </button>
-                                    <a id="fuxa-link-open-view" href="${fullViewUrl}" target="_blank" 
-                                        style="height: 28px; padding: 0 10px; font-size: 11px; border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 2px; background: transparent; color: inherit; text-decoration: none; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center;">
-                                        Open ↗
-                                    </a>
-                                </div>
-                            </div>
-
-                            <!-- Editor Clean URL -->
-                            <div class="my-form-field block mt10 system-input">
-                                <span>Editor Clean URL (Port 80)</span>
-                                <div style="display: flex; gap: 6px; align-items: center; width: 320px;">
-                                    <input id="fuxa-editor-url-text" readonly type="text" value="${fullEditorUrl}" 
-                                           style="flex: 1; height: 28px; padding: 2px 8px; font-size: 11px; font-family: monospace; border: none; border-radius: 2px; background-color: var(--formInputBackground, rgba(255,255,255,0.04)); color: var(--formInputColor, inherit); opacity: 0.85; box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important;" />
-                                    <button id="fuxa-btn-copy-editor" type="button" 
-                                            style="height: 28px; padding: 0 10px; font-size: 11px; border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 2px; background: transparent; color: inherit; cursor: pointer; white-space: nowrap;">
-                                        Copy
-                                    </button>
-                                </div>
-                            </div>
-                        `;
-
-                        portContainer.parentNode.insertBefore(customDiv, portContainer.nextSibling);
-
-                        // Attach event listeners
-                        const saveBtn = customDiv.querySelector('#fuxa-subpath-save-btn');
-                        const input = customDiv.querySelector('#fuxa-subpath-input');
-                        const nameInput = customDiv.querySelector('#fuxa-project-name-input');
-                        const viewInput = customDiv.querySelector('#fuxa-view-url-text');
-                        const editorInput = customDiv.querySelector('#fuxa-editor-url-text');
-                        const openLink = customDiv.querySelector('#fuxa-link-open-view');
-                        const copyViewBtn = customDiv.querySelector('#fuxa-btn-copy-view');
-                        const copyEditorBtn = customDiv.querySelector('#fuxa-btn-copy-editor');
-
-                        // Stop FUXA / SVG editor from intercepting keystrokes and clicks
-                        ['keydown', 'keyup', 'keypress', 'input', 'mousedown', 'pointerdown'].forEach(evt => {
-                            input.addEventListener(evt, (e) => e.stopPropagation(), true);
-                            if (nameInput) nameInput.addEventListener(evt, (e) => e.stopPropagation(), true);
-                            viewInput.addEventListener(evt, (e) => e.stopPropagation(), true);
-                            editorInput.addEventListener(evt, (e) => e.stopPropagation(), true);
-                        });
-
-                        input.addEventListener('click', (e) => {
+        if (isMutating) return;
+        isMutating = true;
+        try {
+            // 1. Remove "Plugins" button card from Setup / Settings dialog
+            const cards = document.querySelectorAll('app-setup .btn-card, .dlg-container .btn-card');
+            for (let i = 0; i < cards.length; i++) {
+                const card = cards[i];
+                if (card.dataset.restrictedChecked) continue;
+                card.dataset.restrictedChecked = 'true';
+                const btn = card.querySelector('button');
+                if (!btn) continue;
+                const text = (btn.textContent || '').toLowerCase();
+                const icon = card.querySelector('mat-icon');
+                const iconText = icon ? icon.textContent.trim().toLowerCase() : '';
+                if (text.includes('plugin') || iconText === 'extension') {
+                    card.style.setProperty('display', 'none', 'important');
+                } else if (text.includes('connection') || iconText === 'lan') {
+                    if (!btn.dataset.statutoryHooked) {
+                        btn.dataset.statutoryHooked = 'true';
+                        btn.addEventListener('click', (e) => {
+                            e.preventDefault();
                             e.stopPropagation();
-                            input.focus();
-                        });
-
-                        if (nameInput) {
-                            nameInput.addEventListener('click', (e) => {
-                                e.stopPropagation();
-                                nameInput.focus();
-                            });
-                        }
-
-                        async function doSaveSettings() {
-                            const val = input.value.trim();
-                            const updatedName = nameInput ? nameInput.value.trim() : '';
-
-                            if (updatedName) {
-                                await saveProjectName(updatedName);
-                            }
-
-                            if (val) {
-                                const clean = setBasePath(val);
-                                saveBtn.textContent = 'Applying...';
-                                
-                                const detectedPort = parseInt(portInput.value, 10) || getTargetPort();
-                                localStorage.setItem('fuxa_target_port', detectedPort);
-                                
-                                await syncSubpathToGateway(clean, detectedPort, updatedName);
-                                
-                                const updatedViewUrl = viewName ? `${hostUrl}${clean}/home/${viewName}` : `${hostUrl}${clean}/home`;
-                                const updatedEditorUrl = `${hostUrl}${clean}/editor`;
-
-                                viewInput.value = updatedViewUrl;
-                                editorInput.value = updatedEditorUrl;
-                                openLink.href = updatedViewUrl;
-
-                                saveBtn.textContent = 'Active! ✓';
-                                saveBtn.style.borderColor = '#2e7d32';
-                                saveBtn.style.background = '#2e7d32';
-                                setTimeout(() => {
-                                    saveBtn.textContent = 'Apply';
-                                    saveBtn.style.borderColor = '#3f51b5';
-                                    saveBtn.style.background = '#3f51b5';
-                                }, 2000);
-                            }
-                        }
-
-                        saveBtn.addEventListener('click', doSaveSettings);
-
-                        // Hook into native Dialog OK button so closing Settings also persists Project Name & Subpath!
-                        const dialogOkBtn = dialog.querySelector('.dialog-action button[color="primary"], mat-dialog-actions button:last-child, button[cdkfocusinitial]');
-                        if (dialogOkBtn) {
-                            dialogOkBtn.addEventListener('click', () => {
-                                doSaveSettings();
-                            });
-                        }
-
-                        copyViewBtn.addEventListener('click', () => {
-                            navigator.clipboard.writeText(viewInput.value);
-                            copyViewBtn.textContent = 'Copied! ✓';
-                            copyViewBtn.style.borderColor = '#2e7d32';
-                            setTimeout(() => {
-                                copyViewBtn.textContent = 'Copy';
-                                copyViewBtn.style.borderColor = '#aaa';
-                            }, 2000);
-                        });
-
-                        copyEditorBtn.addEventListener('click', () => {
-                            navigator.clipboard.writeText(editorInput.value);
-                            copyEditorBtn.textContent = 'Copied! ✓';
-                            copyEditorBtn.style.borderColor = '#2e7d32';
-                            setTimeout(() => {
-                                copyEditorBtn.textContent = 'Copy';
-                                copyEditorBtn.style.borderColor = '#aaa';
-                            }, 2000);
-                        });
+                            const closeBtn = document.querySelector('app-setup .dialog-close-btn, .dlg-container .dialog-close-btn');
+                            if (closeBtn) closeBtn.click();
+                            showStatutoryWarningModal();
+                        }, true);
                     }
                 }
             }
 
-            // Observe Layout Property Dialog (to edit Dashboard Headline directly from the Layout menu)
-            const layoutDialog = document.querySelector('app-layout-property');
-            if (layoutDialog && !layoutDialog.querySelector('#fuxa-layout-headline-field')) {
-                const configRight = layoutDialog.querySelector('.config-right');
-                if (configRight) {
-                    const headlineDiv = document.createElement('div');
-                    headlineDiv.id = 'fuxa-layout-headline-field';
-                    headlineDiv.className = 'my-form-field block mb15';
-                    headlineDiv.style.cssText = 'margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.12);';
-                    
-                    const currentHeadline = getFormattedHeadline(liveProjectName);
-                    headlineDiv.innerHTML = `
-                        <span style="display: block; font-size: 12px; font-weight: 600; color: #38bdf8; margin-bottom: 4px;">Dashboard Headline</span>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            <input id="fuxa-layout-headline-input" type="text" value="${currentHeadline}" 
-                                   placeholder="e.g. Plant 9 TC Monitoring Dashboard" 
-                                   style="width: 250px; height: 32px; padding: 4px 8px; font-size: 13px; border-radius: 3px; background: rgba(255,255,255,0.08); color: #fff; border: 1px solid #475569; outline: none; box-sizing: border-box;" />
-                            <button id="fuxa-layout-headline-apply-btn" type="button"
-                                    style="height: 32px; padding: 0 12px; background: #0284c7; color: #fff; border: none; border-radius: 3px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;">
-                                Apply
-                            </button>
+            // 2. In /device view (Connections page)
+            if (window.location.pathname.includes('/device')) {
+                const addBtns = document.querySelectorAll('.fab-add, button.fab-add, mat-fab, button[mattooltip*="add"], button[mattooltip*="Add"], button[mattooltip*="aggiungi"]');
+                for (let i = 0; i < addBtns.length; i++) {
+                    if (addBtns[i].style.display !== 'none') {
+                        addBtns[i].style.setProperty('display', 'none', 'important');
+                    }
+                }
+                const notices = document.querySelectorAll('.device-plugins-notice, .plugins-notice');
+                for (let i = 0; i < notices.length; i++) {
+                    if (notices[i].style.display !== 'none') {
+                        notices[i].style.setProperty('display', 'none', 'important');
+                    }
+                }
+
+                const workPanel = document.querySelector('app-device .work-panel, app-device');
+                if (workPanel && !document.getElementById('fuxa-statutory-device-banner')) {
+                    const banner = document.createElement('div');
+                    banner.id = 'fuxa-statutory-device-banner';
+                    banner.style.cssText = 'background: rgba(234, 179, 8, 0.12); border: 1px solid rgba(234, 179, 8, 0.4); border-radius: 6px; padding: 12px 18px; margin: 12px 16px; display: flex; align-items: center; gap: 12px; color: #fef08a; font-size: 13px; font-weight: 500; font-family: system-ui, -apple-system, sans-serif; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); z-index: 100;';
+                    banner.innerHTML = `
+                        <span style="font-size: 22px; line-height: 1;">⚠️</span>
+                        <div style="flex: 1; line-height: 1.5;">
+                            <strong style="color: #facc15; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 2px;">Statutory Restriction: Read-Only Mapped View</strong>
+                            ${STATUTORY_WARNING_TEXT}
                         </div>
                     `;
-                    configRight.prepend(headlineDiv);
-
-                    const headlineInput = headlineDiv.querySelector('#fuxa-layout-headline-input');
-                    const headlineApplyBtn = headlineDiv.querySelector('#fuxa-layout-headline-apply-btn');
-
-                    const saveHeadline = async () => {
-                        const newText = (headlineInput.value || '').trim();
-                        if (!newText) return;
-
-                        // Update dialog header preview
-                        const previewHeader = layoutDialog.querySelector('.header-items-button');
-                        if (previewHeader) {
-                            previewHeader.style.setProperty('justify-content', 'center', 'important');
-                            let btn = previewHeader.querySelector('button, span, div');
-                            if (btn) btn.textContent = newText;
-                        }
-
-                        // Save to backend via /api/project-name
-                        try {
-                            const res = await fetch('api/project-name', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ name: newText })
-                            });
-                            if (res.ok) {
-                                liveProjectName = newText;
-                                updateHeaderBadge(newText);
-                                ensureRuntimeDashboardHeadline();
-                                headlineApplyBtn.textContent = 'Saved! ✓';
-                                headlineApplyBtn.style.background = '#16a34a';
-                                setTimeout(() => {
-                                    headlineApplyBtn.textContent = 'Apply';
-                                    headlineApplyBtn.style.background = '#0284c7';
-                                }, 2000);
-                            }
-                        } catch (err) {}
-                    };
-
-                    headlineApplyBtn.addEventListener('click', saveHeadline);
-                    headlineInput.addEventListener('keydown', (e) => {
-                        if (e.key === 'Enter') saveHeadline();
-                    });
-
-                    // Also hook into native Dialog OK button so clicking OK saves the headline too
-                    const layoutOkBtn = layoutDialog.querySelector('.dialog-action button[color="primary"], button[cdkfocusinitial]');
-                    if (layoutOkBtn) {
-                        layoutOkBtn.addEventListener('click', saveHeadline);
-                    }
+                    workPanel.prepend(banner);
                 }
+            }
+
+            // 3. If URL ends with /plugins, redirect to /editor
+            if (window.location.pathname.includes('/plugins')) {
+                window.location.href = getBasePath() + '/editor';
+                setTimeout(showStatutoryWarningModal, 400);
+            }
+        } finally {
+            isMutating = false;
+        }
+    }
+
+    function injectAppSettingsCard() {
+        const dialog = document.querySelector('app-app-settings, .mat-mdc-dialog-container');
+        if (!dialog || dialog.querySelector('.custom-url-setting-field')) return;
+
+        const portInput = dialog.querySelector('input[numberonly], input[disabled]');
+        if (!portInput) return;
+        const portContainer = portInput.closest('.my-form-field') || portInput.parentElement;
+        if (!portContainer) return;
+
+        const customDiv = document.createElement('div');
+        customDiv.className = 'custom-url-setting-field';
+        customDiv.style.cssText = 'width: 320px;';
+        
+        const currentSubpath = getBasePath();
+        const currentProjectName = liveProjectName || 'EMS';
+        const hostUrl = getHostUrl();
+        const viewName = getCurrentViewName();
+        const fullViewUrl = viewName ? `${hostUrl}${currentSubpath}/home/${viewName}` : `${hostUrl}${currentSubpath}/home`;
+        const fullEditorUrl = `${hostUrl}${currentSubpath}/editor`;
+
+        customDiv.innerHTML = `
+            <!-- Project Name Setting -->
+            <div class="my-form-field block mt15 system-input">
+                <span>Project Name</span>
+                <div style="display: flex; gap: 6px; align-items: center; width: 320px;">
+                    <input id="fuxa-project-name-input" type="text" value="${currentProjectName}" placeholder="e.g. EMS" 
+                           style="flex: 1; height: 32px; padding: 4px 8px; font-size: 13px; font-family: inherit; border: none; border-radius: 2px; background-color: var(--formInputBackground, rgba(255,255,255,0.06)); color: var(--formInputColor, inherit); box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important; cursor: text !important;" />
+                </div>
+            </div>
+
+            <!-- Custom URL / Subpath Setting -->
+            <div class="my-form-field block mt15 system-input">
+                <span>Custom URL / Subpath</span>
+                <div style="display: flex; gap: 6px; align-items: center; width: 320px;">
+                    <input id="fuxa-subpath-input" type="text" value="${currentSubpath}" placeholder="/p9/ps/ems" 
+                           style="flex: 1; height: 32px; padding: 4px 8px; font-size: 13px; font-family: monospace; border: none; border-radius: 2px; background-color: var(--formInputBackground, rgba(255,255,255,0.06)); color: var(--formInputColor, inherit); box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important; cursor: text !important;" />
+                    <button id="fuxa-subpath-save-btn" type="button" 
+                            style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border: none; border-radius: 2px; background: #3f51b5; color: #fff; cursor: pointer; white-space: nowrap; transition: background 0.2s;">
+                        Apply
+                    </button>
+                </div>
+            </div>
+
+            <!-- Operator View URL -->
+            <div class="my-form-field block mt15 system-input">
+                <span>Operator View URL (Port 80)</span>
+                <div style="display: flex; gap: 6px; align-items: center; width: 320px;">
+                    <input id="fuxa-view-url-text" readonly type="text" value="${fullViewUrl}" 
+                           style="flex: 1; height: 28px; padding: 2px 8px; font-size: 11px; font-family: monospace; border: none; border-radius: 2px; background-color: var(--formInputBackground, rgba(255,255,255,0.04)); color: var(--formInputColor, inherit); opacity: 0.85; box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important;" />
+                    <button id="fuxa-btn-copy-view" type="button" 
+                            style="height: 28px; padding: 0 10px; font-size: 11px; border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 2px; background: transparent; color: inherit; cursor: pointer; white-space: nowrap;">
+                        Copy
+                    </button>
+                    <a id="fuxa-link-open-view" href="${fullViewUrl}" target="_blank" 
+                        style="height: 28px; padding: 0 10px; font-size: 11px; border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 2px; background: transparent; color: inherit; text-decoration: none; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center;">
+                        Open ↗
+                    </a>
+                </div>
+            </div>
+
+            <!-- Editor Clean URL -->
+            <div class="my-form-field block mt10 system-input">
+                <span>Editor Clean URL (Port 80)</span>
+                <div style="display: flex; gap: 6px; align-items: center; width: 320px;">
+                    <input id="fuxa-editor-url-text" readonly type="text" value="${fullEditorUrl}" 
+                           style="flex: 1; height: 28px; padding: 2px 8px; font-size: 11px; font-family: monospace; border: none; border-radius: 2px; background-color: var(--formInputBackground, rgba(255,255,255,0.04)); color: var(--formInputColor, inherit); opacity: 0.85; box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important;" />
+                    <button id="fuxa-btn-copy-editor" type="button" 
+                            style="height: 28px; padding: 0 10px; font-size: 11px; border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 2px; background: transparent; color: inherit; cursor: pointer; white-space: nowrap;">
+                        Copy
+                    </button>
+                </div>
+            </div>
+        `;
+
+        portContainer.parentNode.insertBefore(customDiv, portContainer.nextSibling);
+
+        // Attach event listeners
+        const saveBtn = customDiv.querySelector('#fuxa-subpath-save-btn');
+        const input = customDiv.querySelector('#fuxa-subpath-input');
+        const nameInput = customDiv.querySelector('#fuxa-project-name-input');
+        const viewInput = customDiv.querySelector('#fuxa-view-url-text');
+        const editorInput = customDiv.querySelector('#fuxa-editor-url-text');
+        const openLink = customDiv.querySelector('#fuxa-link-open-view');
+        const copyViewBtn = customDiv.querySelector('#fuxa-btn-copy-view');
+        const copyEditorBtn = customDiv.querySelector('#fuxa-btn-copy-editor');
+
+        ['keydown', 'keyup', 'keypress', 'input', 'mousedown', 'pointerdown'].forEach(evt => {
+            input.addEventListener(evt, (e) => e.stopPropagation(), true);
+            if (nameInput) nameInput.addEventListener(evt, (e) => e.stopPropagation(), true);
+            viewInput.addEventListener(evt, (e) => e.stopPropagation(), true);
+            editorInput.addEventListener(evt, (e) => e.stopPropagation(), true);
+        });
+
+        input.addEventListener('click', (e) => {
+            e.stopPropagation();
+            input.focus();
+        });
+
+        if (nameInput) {
+            nameInput.addEventListener('click', (e) => {
+                e.stopPropagation();
+                nameInput.focus();
+            });
+        }
+
+        async function doSaveSettings() {
+            const val = input.value.trim();
+            const updatedName = nameInput ? nameInput.value.trim() : '';
+
+            if (updatedName) {
+                await saveProjectName(updatedName);
+            }
+
+            if (val) {
+                const clean = setBasePath(val);
+                saveBtn.textContent = 'Applying...';
+                
+                const detectedPort = parseInt(portInput.value, 10) || getTargetPort();
+                localStorage.setItem('fuxa_target_port', detectedPort);
+                
+                await syncSubpathToGateway(clean, detectedPort, updatedName);
+                
+                const updatedViewUrl = viewName ? `${hostUrl}${clean}/home/${viewName}` : `${hostUrl}${clean}/home`;
+                const updatedEditorUrl = `${hostUrl}${clean}/editor`;
+
+                viewInput.value = updatedViewUrl;
+                editorInput.value = updatedEditorUrl;
+                openLink.href = updatedViewUrl;
+
+                saveBtn.textContent = 'Active! ✓';
+                saveBtn.style.borderColor = '#2e7d32';
+                saveBtn.style.background = '#2e7d32';
+                setTimeout(() => {
+                    saveBtn.textContent = 'Apply';
+                    saveBtn.style.borderColor = '#3f51b5';
+                    saveBtn.style.background = '#3f51b5';
+                }, 2000);
+            }
+        }
+
+        saveBtn.addEventListener('click', doSaveSettings);
+
+        const dialogOkBtn = dialog.querySelector('.dialog-action button[color="primary"], mat-dialog-actions button:last-child, button[cdkfocusinitial]');
+        if (dialogOkBtn) {
+            dialogOkBtn.addEventListener('click', () => {
+                doSaveSettings();
+            });
+        }
+
+        copyViewBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(viewInput.value);
+            copyViewBtn.textContent = 'Copied! ✓';
+            copyViewBtn.style.borderColor = '#2e7d32';
+            setTimeout(() => {
+                copyViewBtn.textContent = 'Copy';
+                copyViewBtn.style.borderColor = '#aaa';
+            }, 2000);
+        });
+
+        copyEditorBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(editorInput.value);
+            copyEditorBtn.textContent = 'Copied! ✓';
+            copyEditorBtn.style.borderColor = '#2e7d32';
+            setTimeout(() => {
+                copyEditorBtn.textContent = 'Copy';
+                copyEditorBtn.style.borderColor = '#aaa';
+            }, 2000);
+        });
+    }
+
+    function injectLayoutHeadlineField() {
+        const layoutDialog = document.querySelector('app-layout-property');
+        if (!layoutDialog || layoutDialog.querySelector('#fuxa-layout-headline-field')) return;
+
+        const configRight = layoutDialog.querySelector('.config-right');
+        if (!configRight) return;
+
+        const headlineDiv = document.createElement('div');
+        headlineDiv.id = 'fuxa-layout-headline-field';
+        headlineDiv.className = 'my-form-field block mb15';
+        headlineDiv.style.cssText = 'margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.12);';
+        
+        const currentHeadline = getFormattedHeadline(liveProjectName);
+        headlineDiv.innerHTML = `
+            <span style="display: block; font-size: 12px; font-weight: 600; color: #38bdf8; margin-bottom: 4px;">Dashboard Headline</span>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <input id="fuxa-layout-headline-input" type="text" value="${currentHeadline}" 
+                       placeholder="e.g. Plant 9 TC Monitoring Dashboard" 
+                       style="width: 250px; height: 32px; padding: 4px 8px; font-size: 13px; border-radius: 3px; background: rgba(255,255,255,0.08); color: #fff; border: 1px solid #475569; outline: none; box-sizing: border-box;" />
+                <button id="fuxa-layout-headline-apply-btn" type="button"
+                        style="height: 32px; padding: 0 12px; background: #0284c7; color: #fff; border: none; border-radius: 3px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;">
+                    Apply
+                </button>
+            </div>
+        `;
+        configRight.prepend(headlineDiv);
+
+        const headlineInput = headlineDiv.querySelector('#fuxa-layout-headline-input');
+        const headlineApplyBtn = headlineDiv.querySelector('#fuxa-layout-headline-apply-btn');
+
+        const saveHeadline = async () => {
+            const newText = (headlineInput.value || '').trim();
+            if (!newText) return;
+
+            const previewHeader = layoutDialog.querySelector('.header-items-button');
+            if (previewHeader) {
+                previewHeader.style.setProperty('justify-content', 'center', 'important');
+                let btn = previewHeader.querySelector('button, span, div');
+                if (btn) btn.textContent = newText;
+            }
+
+            try {
+                const res = await fetch('api/project-name', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: newText })
+                });
+                if (res.ok) {
+                    liveProjectName = newText;
+                    updateHeaderBadge(newText);
+                    ensureRuntimeDashboardHeadline();
+                    headlineApplyBtn.textContent = 'Saved! ✓';
+                    headlineApplyBtn.style.background = '#16a34a';
+                    setTimeout(() => {
+                        headlineApplyBtn.textContent = 'Apply';
+                        headlineApplyBtn.style.background = '#0284c7';
+                    }, 2000);
+                }
+            } catch (err) {}
+        };
+
+        headlineApplyBtn.addEventListener('click', saveHeadline);
+        headlineInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') saveHeadline();
+        });
+
+        const layoutOkBtn = layoutDialog.querySelector('.dialog-action button[color="primary"], button[cdkfocusinitial]');
+        if (layoutOkBtn) {
+            layoutOkBtn.addEventListener('click', saveHeadline);
+        }
+    }
+
+    let observerInitialized = false;
+    function observeSettingsDialog() {
+        if (observerInitialized) return;
+        observerInitialized = true;
+
+        removeHeaderPageUrlButton();
+        enforceViewServerRestrictions();
+
+        const checkAndInject = () => {
+            if (isMutating) return;
+            isMutating = true;
+            try {
+                enforceViewServerRestrictions();
+                injectAppSettingsCard();
+                injectLayoutHeadlineField();
+            } finally {
+                isMutating = false;
+            }
+        };
+
+        // MutationObserver scoped to detect modal dialog appearance (NO heavy subtree loops)
+        const observer = new MutationObserver((mutations) => {
+            if (isMutating) return;
+            let hasAddedNodes = false;
+            for (let i = 0; i < mutations.length; i++) {
+                if (mutations[i].addedNodes && mutations[i].addedNodes.length > 0) {
+                    hasAddedNodes = true;
+                    break;
+                }
+            }
+            if (hasAddedNodes) {
+                checkAndInject();
             }
         });
 
-        observer.observe(document.body, { childList: true, subtree: true });
+        // Observe only dialog overlay containers
+        const overlayContainer = document.querySelector('.cdk-overlay-container') || document.body;
+        observer.observe(overlayContainer, { childList: true });
+
+        // If overlay container is created later on body, listen for it once
+        if (overlayContainer === document.body) {
+            const bodyObs = new MutationObserver(() => {
+                const newOverlay = document.querySelector('.cdk-overlay-container');
+                if (newOverlay) {
+                    bodyObs.disconnect();
+                    observer.disconnect();
+                    observer.observe(newOverlay, { childList: true });
+                }
+            });
+            bodyObs.observe(document.body, { childList: true });
+        }
     }
 
-    // Init
-    ensureTvsHeaderLogo();
-    enforceViewServerRestrictions();
-    fetchLiveProjectName();
+    // Safe Single-Run Initialization
+    function init() {
+        removeHeaderPageUrlButton();
+        ensureTvsHeaderLogo();
+        enforceViewServerRestrictions();
+        fetchLiveProjectName();
+        observeSettingsDialog();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init, { once: true });
+    } else {
+        init();
+    }
+
+    // Heartbeat check (every 2.5s) to guarantee header elements persist across Angular route switches
     setInterval(() => {
         ensureTvsHeaderLogo();
         enforceViewServerRestrictions();
-    }, 1200);
+    }, 2500);
 
-    window.addEventListener('DOMContentLoaded', () => {
-        ensureTvsHeaderLogo();
-        enforceViewServerRestrictions();
-        fetchLiveProjectName();
-        observeSettingsDialog();
-    });
-    if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        ensureTvsHeaderLogo();
-        enforceViewServerRestrictions();
-        fetchLiveProjectName();
-        observeSettingsDialog();
-    }
 })();
