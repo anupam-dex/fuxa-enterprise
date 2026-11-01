@@ -130,11 +130,11 @@
         if (isMutating) return;
         isMutating = true;
         try {
-            // 1. In Editor page: STRICTLY REMOVE any TVS logo!
+            // 1. In Editor page: STRICTLY REMOVE any TVS logo or stray project badge!
             const editorLogo = document.getElementById('fuxa-header-tvs-logo');
-            if (editorLogo) {
-                editorLogo.remove();
-            }
+            if (editorLogo) editorLogo.remove();
+            const editorBadge = document.getElementById('fuxa-header-project-badge');
+            if (editorBadge) editorBadge.remove();
 
             // 2. In View / Runtime page: Target specifically the header inside app-home / mat-sidenav-content
             const runtimeHeader = document.querySelector('app-home .header, mat-sidenav-content > .header, .sidenav-container .header');
@@ -251,19 +251,10 @@
 
     function updateHeaderBadge(name) {
         ensureTvsHeaderLogo();
+        const badge = document.getElementById('fuxa-header-project-badge');
+        if (badge) badge.remove();
         if (!name) return;
         document.title = `${name} - TVS SCADA`;
-        const headerPanel = document.querySelector('app-header .header-panel');
-        if (headerPanel) {
-            let badge = headerPanel.querySelector('#fuxa-header-project-badge');
-            if (!badge) {
-                badge = document.createElement('div');
-                badge.id = 'fuxa-header-project-badge';
-                badge.style.cssText = 'display: inline-flex; align-items: center; gap: 8px; margin-left: 12px; padding: 4px 12px; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; color: #38bdf8; font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 600; cursor: default; user-select: none; -webkit-user-select: none;';
-                headerPanel.appendChild(badge);
-            }
-            badge.innerHTML = `<span style="opacity: 0.65; font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase;">Project:</span> <span id="fuxa-header-project-name">${name}</span>`;
-        }
     }
 
     async function fetchLiveProjectName() {
@@ -849,6 +840,8 @@
     // Safe Single-Run Initialization
     function init() {
         removeHeaderPageUrlButton();
+        const staleBadge = document.getElementById('fuxa-header-project-badge');
+        if (staleBadge) staleBadge.remove();
         ensureTvsHeaderLogo();
         ensureRuntimeFooter();
         enforceViewServerRestrictions();
