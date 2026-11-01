@@ -1424,6 +1424,20 @@
         }
     }
 
+    function ensureAboutDialogCustomization() {
+        const infoDialog = document.querySelector('dialog-info, .cdk-overlay-pane:has(dialog-info)');
+        if (!infoDialog || infoDialog.querySelector('#fuxa-about-custom-text')) return;
+
+        const content = infoDialog.querySelector('mat-dialog-content, [mat-dialog-content], .mat-mdc-dialog-content');
+        if (!content) return;
+
+        const customAbout = document.createElement('div');
+        customAbout.id = 'fuxa-about-custom-text';
+        customAbout.style.cssText = 'display: block; font-size: 12px; margin-top: 12px; padding-top: 8px; border-top: 1px solid rgba(128, 128, 128, 0.25); color: #183883; font-weight: 600; line-height: 1.4;';
+        customAbout.textContent = 'Customised for TVS by Plant engineering 1.3';
+        content.appendChild(customAbout);
+    }
+
     let observerInitialized = false;
     function observeSettingsDialog() {
         if (observerInitialized) return;
@@ -1439,6 +1453,7 @@
                 enforceViewServerRestrictions();
                 injectAppSettingsCard();
                 injectLayoutHeadlineField();
+                ensureAboutDialogCustomization();
             } finally {
                 isMutating = false;
             }
@@ -1519,6 +1534,7 @@
         ensureTvsHeaderLogo();
         ensureRuntimeFooter();
         ensureHeaderLiveDateTime();
+        ensureAboutDialogCustomization();
         enforceViewServerRestrictions();
         fetchLiveProjectName();
         observeSettingsDialog();
@@ -1552,6 +1568,7 @@
         ensureTvsHeaderLogo();
         ensureRuntimeFooter();
         ensureHeaderLiveDateTime();
+        ensureAboutDialogCustomization();
         enforceViewServerRestrictions();
     }, 800);
 
