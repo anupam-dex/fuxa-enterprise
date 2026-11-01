@@ -109,6 +109,12 @@ class OPCUABridge:
                     "Conveyor_Main": [("Line_Speed_MPM", 12.5, "number"), ("E_Stop_Active", False, "boolean"), ("Takt_Time_Sec", 58.0, "number")]
                 }
             },
+            "Plant_4": {
+                "Facility_Utilities": {
+                    "Chiller_Line_1": [("Chiller_Temp_C", 7.2, "number"), ("Compressor_Current_A", 145.0, "number"), ("Chiller_Running", True, "boolean")],
+                    "Air_Compressor": [("Header_Pressure_Bar", 7.8, "number"), ("Motor_Speed_RPM", 1750.0, "number")]
+                }
+            },
             "Plant_9": {
                 "Paintshop_Division_6": {
                     "Oven_Line_1": [
@@ -139,7 +145,9 @@ class OPCUABridge:
                 for machine_name, tag_list in machines.items():
                     machine_obj = await div_folder.add_object(self.idx, machine_name)
                     for (t_name, initial_val, t_type) in tag_list:
-                        var = await machine_obj.add_variable(self.idx, t_name, initial_val)
+                        node_id_str = f"{plant_name}.{div_name}.{machine_name}.{t_name}"
+                        node_id = ua.NodeId(node_id_str, self.idx)
+                        var = await machine_obj.add_variable(node_id, t_name, initial_val)
                         await var.set_writable()
                         self.nodes[f"{plant_name}_{div_name}_{machine_name}_{t_name}"] = (var, t_type, initial_val)
 

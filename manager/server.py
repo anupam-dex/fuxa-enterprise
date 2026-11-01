@@ -17,7 +17,7 @@ from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 
 from port_engine import PortEngine
-from project_builder import generate_fuxa_database
+from project_builder import generate_fuxa_database, sync_tags_to_view_database, get_storage_tags_for_plant
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from nginx.fuxa_route_generator import generate_nginx_conf, reload_nginx
 
@@ -59,7 +59,8 @@ def ensure_default_storage_servers():
                     plant_id=int(plant_id),
                     division_name=f"Central Storage Master (Plant {plant_id})",
                     line_name="PLC Collector & InfluxDB Storage",
-                    opcua_endpoint="opc.tcp://127.0.0.1:4845"
+                    opcua_endpoint="opc.tcp://127.0.0.1:4845/fuxa/server/",
+                    base_dir=BASE_DIR
                 )
             _launch_fuxa_instance(f"storage_p{plant_id}", storage_port, storage_work_dir, f"/p{plant_id}/storage")
 
@@ -69,12 +70,22 @@ def on_startup():
     # 1. Host storage servers for all plants by default
     ensure_default_storage_servers()
 
-    # 2. Automatically restore and re-launch all existing view servers
+    # 2. Automatically restore, sync tags and re-launch all existing view servers
     instances = port_engine.get_all_instances()
     for inst_id, inst in list(instances.items()):
         port = inst.get("port")
         work_dir = inst.get("work_dir") or os.path.join(INSTANCES_DIR, f"port_{port}")
         subpath = inst.get("subpath") or f"/p{inst.get('plant', 9)}/div{inst.get('division', 1)}/l{inst.get('line', 1)}"
+        plant_id = inst.get("plant", 9)
+
+        # Pre-flight tag sync: Ensure storage server tags are injected into View Server database
+        try:
+            synced_tags = sync_tags_to_view_database(work_dir, plant_id, base_dir=BASE_DIR)
+            inst["tag_count"] = len(synced_tags)
+            port_engine.register_instance(inst_id, inst)
+        except Exception as e:
+            logger.warning(f"Could not auto-sync tags for {inst_id}: {e}")
+
         if port and not port_engine.is_port_in_use(port):
             logger.info(f"Auto-restoring View Server {inst_id} on Port {port} ({subpath})...")
             pid = _launch_fuxa_instance(inst_id, port, work_dir, subpath)
@@ -198,8 +209,12 @@ def create_project(req: CreateProjectRequest):
         plant_id=req.plant,
         division_name=div_name,
         line_name=line_name,
-        opcua_endpoint="opc.tcp://127.0.0.1:4840"
+        opcua_endpoint="opc.tcp://127.0.0.1:4845/fuxa/server/",
+        base_dir=BASE_DIR
     )
+
+    storage_tags = get_storage_tags_for_plant(req.plant, div_name, base_dir=BASE_DIR)
+    tag_count = len(storage_tags)
 
     # 3. Generate reverse proxy route & subpath
     if req.custom_subpath and req.custom_subpath.strip():
@@ -230,6 +245,7 @@ def create_project(req: CreateProjectRequest):
         "work_dir": instance_work_dir,
         "pid": pid,
         "status": "RUNNING" if pid else "STOPPED",
+        "tag_count": tag_count,
         "editor_url": f"{subpath}/editor",
         "home_url": f"{subpath}/home"
     }
@@ -238,7 +254,7 @@ def create_project(req: CreateProjectRequest):
     return {
         "success": True,
         "instance": instance_meta,
-        "message": f"View Server successfully created on Port {port} with pre-configured OPC-UA Storage tags!"
+        "message": f"View Server successfully created on Port {port} with {tag_count} pre-configured Storage Server tags!"
     }
 
 def _launch_fuxa_instance(instance_id: str, port: int, work_dir: str, subpath: str):
@@ -313,6 +329,79 @@ def delete_instance(instance_id: str):
     stop_instance(instance_id)
     port_engine.unregister_instance(instance_id)
     return {"success": True}
+
+@app.post("/api/instances/{instance_id}/sync-tags")
+def sync_instance_tags(instance_id: str):
+    """Syncs the latest storage server tags into the view server's database and restarts if running"""
+    instances = port_engine.get_all_instances()
+    if instance_id not in instances:
+        raise HTTPException(status_code=404, detail="Instance not found")
+
+    inst = instances[instance_id]
+    port = inst.get("port")
+    plant_id = inst.get("plant", 9)
+    work_dir = inst.get("work_dir") or os.path.join(INSTANCES_DIR, f"port_{port}")
+
+    synced_tags = sync_tags_to_view_database(work_dir, plant_id, base_dir=BASE_DIR)
+    tag_count = len(synced_tags)
+    inst["tag_count"] = tag_count
+
+    # If instance is currently running, seamlessly restart it so FUXA picks up updated tags
+    was_running = inst.get("status") == "RUNNING" or port_engine.is_port_in_use(port)
+    if was_running:
+        logger.info(f"Restarting instance {instance_id} to activate {tag_count} synced tags...")
+        stop_instance(instance_id)
+        subpath = inst.get("subpath", f"/p{plant_id}/div1/l1")
+        pid = _launch_fuxa_instance(instance_id, port, work_dir, subpath)
+        inst["pid"] = pid
+        inst["status"] = "RUNNING" if pid else "STOPPED"
+
+    port_engine.register_instance(instance_id, inst)
+    return {
+        "success": True,
+        "instance_id": instance_id,
+        "port": port,
+        "plant": plant_id,
+        "tag_count": tag_count,
+        "tags": list(synced_tags.keys()),
+        "message": f"Successfully synced {tag_count} Plant {plant_id} Storage tags to View Server on Port {port}!"
+    }
+
+@app.post("/api/sync-all-tags")
+def sync_all_tags():
+    """Syncs storage server tags to all view servers across the entire fleet"""
+    instances = port_engine.get_all_instances()
+    synced_list = []
+
+    for inst_id, inst in list(instances.items()):
+        port = inst.get("port")
+        plant_id = inst.get("plant", 9)
+        work_dir = inst.get("work_dir") or os.path.join(INSTANCES_DIR, f"port_{port}")
+
+        try:
+            synced_tags = sync_tags_to_view_database(work_dir, plant_id, base_dir=BASE_DIR)
+            tag_count = len(synced_tags)
+            inst["tag_count"] = tag_count
+
+            was_running = inst.get("status") == "RUNNING" or port_engine.is_port_in_use(port)
+            if was_running:
+                stop_instance(inst_id)
+                subpath = inst.get("subpath", f"/p{plant_id}/div1/l1")
+                pid = _launch_fuxa_instance(inst_id, port, work_dir, subpath)
+                inst["pid"] = pid
+                inst["status"] = "RUNNING" if pid else "STOPPED"
+
+            port_engine.register_instance(inst_id, inst)
+            synced_list.append({"instance_id": inst_id, "port": port, "plant": plant_id, "tag_count": tag_count})
+        except Exception as e:
+            logger.error(f"Failed to sync tags for {inst_id}: {e}")
+
+    return {
+        "success": True,
+        "count": len(synced_list),
+        "synced_instances": synced_list,
+        "message": f"Successfully synced storage tags to {len(synced_list)} view servers!"
+    }
 
 @app.get("/api/instances/{instance_id}/logs")
 def get_instance_logs(instance_id: str, lines: int = 100):

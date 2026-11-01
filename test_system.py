@@ -82,14 +82,16 @@ def test_project_builder():
     device_data = json.loads(row[0])
     print(f"Pre-configured Device in FUXA: {device_data['name']} (Type: {device_data['type']})")
     print(f"Target OPC-UA Endpoint: {device_data['property']['address']}")
+    print(f"Pre-populated Storage Tags: {len(device_data.get('tags', {}))}")
     assert device_data['type'] == 'OPCUA'
-    assert device_data['property']['address'] == 'opc.tcp://127.0.0.1:4840'
+    assert device_data['property']['address'] == 'opc.tcp://127.0.0.1:4845/fuxa/server/'
+    assert len(device_data.get('tags', {})) == 11, f"Expected 11 tags, got {len(device_data.get('tags', {}))}"
 
     # Verify no Modbus/S7 devices exist
     cur.execute("SELECT count(*) FROM devices;")
     total_devs = cur.fetchone()[0]
-    print(f"Total devices in View Server: {total_devs} (Only the central storage OPC-UA bridge)")
-    assert total_devs == 1
+    print(f"Total devices in View Server: {total_devs} (Only FUXA server & central storage OPC-UA bridge)")
+    assert total_devs == 2  # server + dev_opcua_plant_9
 
     conn.close()
     print("PASSED: SQLite project file generated with zero PLC coupling!\n")

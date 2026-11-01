@@ -147,6 +147,7 @@ function renderInstancesList() {
             <div class="col-data-source">
                 <div class="source-label">Source Bridge</div>
                 <div class="source-val">Storage :${inst.storage_port || 5900}</div>
+                <div class="tag-badge" title="Active Storage Tags Ingested">🏷️ ${inst.tag_count || 11} Tags</div>
             </div>
 
             <!-- Col 4: OT Port 80 Clean Reverse Proxy Link -->
@@ -160,6 +161,7 @@ function renderInstancesList() {
             <div class="col-actions">
                 <a href="${directEditor}" target="_blank" class="btn btn-primary btn-sm" title="Open Editor">Editor</a>
                 <a href="${directView}" target="_blank" class="btn btn-secondary btn-sm" title="Open Operator View">View</a>
+                <button onclick="syncTags('${inst.id}')" class="btn btn-secondary btn-sm" title="Sync Plant Storage Tags into this View Server">🔄 Sync Tags</button>
                 <button onclick="editInstance('${inst.id}')" class="btn btn-secondary btn-sm" title="Edit View Server">✏️ Edit</button>
                 <button onclick="viewLogs('${inst.id}')" class="btn btn-secondary btn-sm" title="View Logs">Logs</button>
                 <button onclick="deleteInstance('${inst.id}')" class="btn btn-danger btn-sm" title="Delete Instance">&#128465;</button>
@@ -330,6 +332,36 @@ async function viewLogs(id) {
 
 function closeLogsModal() {
     document.getElementById('logs-modal').classList.remove('show');
+}
+
+async function syncTags(id) {
+    try {
+        const res = await fetch(`/api/instances/${id}/sync-tags`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            alert(`✓ ${data.message}`);
+            loadMatrix();
+        } else {
+            alert('Failed to sync tags: ' + (data.detail || 'Unknown error'));
+        }
+    } catch (e) {
+        alert('Error syncing tags: ' + e.message);
+    }
+}
+
+async function syncAllTags() {
+    try {
+        const res = await fetch('/api/sync-all-tags', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            alert(`✓ ${data.message}`);
+            loadMatrix();
+        } else {
+            alert('Failed to sync all tags: ' + (data.detail || 'Unknown error'));
+        }
+    } catch (e) {
+        alert('Error syncing all tags: ' + e.message);
+    }
 }
 
 // Auto-Refresh

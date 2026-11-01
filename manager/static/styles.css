@@ -411,6 +411,17 @@ body {
     color: var(--accent-storage);
 }
 
+.col-data-source .tag-badge {
+    font-size: 0.7rem;
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.12);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+    width: fit-content;
+    margin-top: 2px;
+}
+
 .col-ot-link {
     display: flex;
     align-items: center;
