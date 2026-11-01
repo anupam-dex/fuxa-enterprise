@@ -1,10 +1,14 @@
 :host {
     .container {
         width: 760px;
+        max-width: 95vw;
+        box-sizing: border-box;
     }
 
     .property-container {
-        width: 300px;
+        width: 100%;
+        max-width: 680px;
+        box-sizing: border-box;
     }
 
     .slider-field span {

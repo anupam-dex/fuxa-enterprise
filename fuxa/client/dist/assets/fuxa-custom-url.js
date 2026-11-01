@@ -46,6 +46,42 @@
                     opacity: 0 !important;
                     pointer-events: none !important;
                 }
+
+                /* Expand View Properties and Settings dialog to fit width naturally without 300px restriction */
+                app-view-property .property-container,
+                app-view-property .mat-tab-container,
+                app-view-property form.container,
+                app-app-settings .property-container,
+                app-app-settings .mat-tab-container,
+                .cdk-overlay-pane app-view-property .property-container,
+                .mat-mdc-dialog-container app-view-property .property-container,
+                .cdk-overlay-pane:has(app-view-property) .property-container,
+                .mat-mdc-dialog-container:has(app-view-property) .property-container {
+                    width: 100% !important;
+                    max-width: 680px !important;
+                    box-sizing: border-box !important;
+                }
+                app-view-property .container,
+                app-app-settings .container {
+                    width: 100% !important;
+                    max-width: 760px !important;
+                    box-sizing: border-box !important;
+                }
+                app-view-property .my-form-field.block,
+                app-view-property .my-form-field.block input[type="text"],
+                app-view-property .custom-url-setting-field,
+                app-view-property .custom-url-setting-field .my-form-field,
+                app-app-settings .custom-url-setting-field,
+                app-app-settings .custom-url-setting-field .my-form-field {
+                    width: 100% !important;
+                    max-width: 100% !important;
+                    box-sizing: border-box !important;
+                }
+                app-view-property mat-select,
+                app-view-property .my-form-field.block input {
+                    width: 100% !important;
+                    box-sizing: border-box !important;
+                }
             `;
             (document.head || document.documentElement).appendChild(style);
         }
@@ -1007,8 +1043,22 @@
     }
 
     function injectAppSettingsCard() {
-        const dialog = document.querySelector('app-app-settings, .mat-mdc-dialog-container');
+        const dialog = document.querySelector('app-app-settings, app-view-property, .mat-mdc-dialog-container');
         if (!dialog || dialog.querySelector('.custom-url-setting-field')) return;
+
+        // Expand any property containers in this dialog to fill full width up to 680px
+        const propContainers = dialog.querySelectorAll('.property-container, .mat-tab-container');
+        propContainers.forEach(el => {
+            el.style.setProperty('width', '100%', 'important');
+            el.style.setProperty('max-width', '680px', 'important');
+            el.style.setProperty('box-sizing', 'border-box', 'important');
+        });
+        const dialogContainers = dialog.querySelectorAll('.container');
+        dialogContainers.forEach(el => {
+            el.style.setProperty('width', '100%', 'important');
+            el.style.setProperty('max-width', '760px', 'important');
+            el.style.setProperty('box-sizing', 'border-box', 'important');
+        });
 
         const portInput = dialog.querySelector('input[numberonly], input[disabled]');
         if (!portInput) return;
@@ -1017,7 +1067,7 @@
 
         const customDiv = document.createElement('div');
         customDiv.className = 'custom-url-setting-field';
-        customDiv.style.cssText = 'width: 320px;';
+        customDiv.style.cssText = 'width: 100%; max-width: 100%; box-sizing: border-box; display: block; clear: both; margin-top: 15px;';
         
         const currentSubpath = getBasePath();
         const currentProjectName = liveProjectName || 'EMS';
@@ -1028,52 +1078,52 @@
 
         customDiv.innerHTML = `
             <!-- Project Name Setting -->
-            <div class="my-form-field block mt15 system-input">
-                <span>Project Name</span>
-                <div style="display: flex; gap: 6px; align-items: center; width: 320px;">
+            <div class="my-form-field block mt15 system-input" style="width: 100%; box-sizing: border-box;">
+                <span style="display: block; margin-bottom: 4px; font-weight: 500;">Project Name</span>
+                <div style="display: flex; gap: 8px; align-items: center; width: 100%; box-sizing: border-box;">
                     <input id="fuxa-project-name-input" type="text" value="${currentProjectName}" placeholder="e.g. EMS" 
-                           style="flex: 1; height: 32px; padding: 4px 8px; font-size: 13px; font-family: inherit; border: none; border-radius: 2px; background-color: var(--formInputBackground, rgba(255,255,255,0.06)); color: var(--formInputColor, inherit); box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important; cursor: text !important;" />
+                           style="flex: 1 1 auto; min-width: 0; width: 100%; height: 34px; padding: 6px 12px; font-size: 13px; font-family: inherit; border: none; border-radius: 4px; background-color: var(--formInputBackground, rgba(255,255,255,0.06)); color: var(--formInputColor, inherit); box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important; cursor: text !important;" />
                 </div>
             </div>
 
             <!-- Custom URL / Subpath Setting -->
-            <div class="my-form-field block mt15 system-input">
-                <span>Custom URL / Subpath</span>
-                <div style="display: flex; gap: 6px; align-items: center; width: 320px;">
+            <div class="my-form-field block mt15 system-input" style="width: 100%; box-sizing: border-box;">
+                <span style="display: block; margin-bottom: 4px; font-weight: 500;">Custom URL / Subpath</span>
+                <div style="display: flex; gap: 8px; align-items: center; width: 100%; box-sizing: border-box;">
                     <input id="fuxa-subpath-input" type="text" value="${currentSubpath}" placeholder="/p9/ps/ems" 
-                           style="flex: 1; height: 32px; padding: 4px 8px; font-size: 13px; font-family: monospace; border: none; border-radius: 2px; background-color: var(--formInputBackground, rgba(255,255,255,0.06)); color: var(--formInputColor, inherit); box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important; cursor: text !important;" />
+                           style="flex: 1 1 auto; min-width: 0; width: 100%; height: 34px; padding: 6px 12px; font-size: 13px; font-family: monospace; border: none; border-radius: 4px; background-color: var(--formInputBackground, rgba(255,255,255,0.06)); color: var(--formInputColor, inherit); box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important; cursor: text !important;" />
                     <button id="fuxa-subpath-save-btn" type="button" 
-                            style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border: none; border-radius: 2px; background: #3f51b5; color: #fff; cursor: pointer; white-space: nowrap; transition: background 0.2s;">
+                            style="flex-shrink: 0; white-space: nowrap; height: 34px; padding: 0 18px; font-size: 12.5px; font-weight: 600; border: none; border-radius: 4px; background: #3f51b5; color: #fff; cursor: pointer; transition: background 0.2s;">
                         Apply
                     </button>
                 </div>
             </div>
 
             <!-- Operator View URL -->
-            <div class="my-form-field block mt15 system-input">
-                <span>Operator View URL (Port 80)</span>
-                <div style="display: flex; gap: 6px; align-items: center; width: 320px;">
+            <div class="my-form-field block mt15 system-input" style="width: 100%; box-sizing: border-box;">
+                <span style="display: block; margin-bottom: 4px; font-weight: 500;">Operator View URL (Port 80)</span>
+                <div style="display: flex; gap: 8px; align-items: center; width: 100%; box-sizing: border-box;">
                     <input id="fuxa-view-url-text" readonly type="text" value="${fullViewUrl}" 
-                           style="flex: 1; height: 28px; padding: 2px 8px; font-size: 11px; font-family: monospace; border: none; border-radius: 2px; background-color: var(--formInputBackground, rgba(255,255,255,0.04)); color: var(--formInputColor, inherit); opacity: 0.85; box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important;" />
+                           style="flex: 1 1 auto; min-width: 0; width: 100%; height: 32px; padding: 4px 10px; font-size: 12px; font-family: monospace; border: none; border-radius: 4px; background-color: var(--formInputBackground, rgba(255,255,255,0.04)); color: var(--formInputColor, inherit); opacity: 0.85; box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important;" />
                     <button id="fuxa-btn-copy-view" type="button" 
-                            style="height: 28px; padding: 0 10px; font-size: 11px; border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 2px; background: transparent; color: inherit; cursor: pointer; white-space: nowrap;">
+                            style="flex-shrink: 0; white-space: nowrap; height: 32px; padding: 0 14px; font-size: 11.5px; font-weight: 500; border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 4px; background: transparent; color: inherit; cursor: pointer;">
                         Copy
                     </button>
                     <a id="fuxa-link-open-view" href="${fullViewUrl}" target="_blank" 
-                        style="height: 28px; padding: 0 10px; font-size: 11px; border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 2px; background: transparent; color: inherit; text-decoration: none; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center;">
+                        style="flex-shrink: 0; white-space: nowrap; height: 32px; padding: 0 14px; font-size: 11.5px; font-weight: 500; border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 4px; background: transparent; color: inherit; text-decoration: none; cursor: pointer; display: inline-flex; align-items: center; box-sizing: border-box;">
                         Open ↗
                     </a>
                 </div>
             </div>
 
             <!-- Editor Clean URL -->
-            <div class="my-form-field block mt10 system-input">
-                <span>Editor Clean URL (Port 80)</span>
-                <div style="display: flex; gap: 6px; align-items: center; width: 320px;">
+            <div class="my-form-field block mt10 system-input" style="width: 100%; box-sizing: border-box;">
+                <span style="display: block; margin-bottom: 4px; font-weight: 500;">Editor Clean URL (Port 80)</span>
+                <div style="display: flex; gap: 8px; align-items: center; width: 100%; box-sizing: border-box;">
                     <input id="fuxa-editor-url-text" readonly type="text" value="${fullEditorUrl}" 
-                           style="flex: 1; height: 28px; padding: 2px 8px; font-size: 11px; font-family: monospace; border: none; border-radius: 2px; background-color: var(--formInputBackground, rgba(255,255,255,0.04)); color: var(--formInputColor, inherit); opacity: 0.85; box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important;" />
+                           style="flex: 1 1 auto; min-width: 0; width: 100%; height: 32px; padding: 4px 10px; font-size: 12px; font-family: monospace; border: none; border-radius: 4px; background-color: var(--formInputBackground, rgba(255,255,255,0.04)); color: var(--formInputColor, inherit); opacity: 0.85; box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important;" />
                     <button id="fuxa-btn-copy-editor" type="button" 
-                            style="height: 28px; padding: 0 10px; font-size: 11px; border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 2px; background: transparent; color: inherit; cursor: pointer; white-space: nowrap;">
+                            style="flex-shrink: 0; white-space: nowrap; height: 32px; padding: 0 14px; font-size: 11.5px; font-weight: 500; border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 4px; background: transparent; color: inherit; cursor: pointer;">
                         Copy
                     </button>
                 </div>
