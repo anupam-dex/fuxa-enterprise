@@ -173,6 +173,7 @@
 
             observeSidenavDrawer(runtimeHeader);
             ensureRuntimeDashboardHeadline(runtimeHeader);
+            ensureRuntimeFooter();
         } finally {
             isMutating = false;
         }
@@ -225,6 +226,27 @@
         }
 
         updateLogoShift();
+    }
+
+    function ensureRuntimeFooter() {
+        const isEditor = window.location.pathname.includes('/editor');
+        const runtimeHeader = document.querySelector('app-home .header, mat-sidenav-content > .header, .sidenav-container .header');
+        const isViewPage = !isEditor && (!!runtimeHeader || !!document.querySelector('app-home'));
+
+        if (!isViewPage) {
+            const staleFooter = document.getElementById('fuxa-runtime-footer');
+            if (staleFooter) staleFooter.remove();
+            return;
+        }
+
+        let footer = document.getElementById('fuxa-runtime-footer');
+        if (!footer) {
+            footer = document.createElement('div');
+            footer.id = 'fuxa-runtime-footer';
+            footer.style.cssText = 'position: fixed; bottom: 0; left: 0; right: 0; height: 26px; display: flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.94); backdrop-filter: blur(6px); border-top: 1px solid rgba(24, 56, 131, 0.16); box-shadow: 0 -1px 4px rgba(0, 0, 0, 0.05); color: #183883; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 11.5px; letter-spacing: 0.3px; z-index: 9990; user-select: none; pointer-events: none;';
+            footer.innerHTML = `<span>Developed and Maintained by <strong style="font-weight: 700; color: #183883;">Plant Engineering</strong></span>`;
+            document.body.appendChild(footer);
+        }
     }
 
     function updateHeaderBadge(name) {
@@ -810,18 +832,25 @@
         const orig = history[type];
         return function () {
             const result = orig.apply(this, arguments);
-            setTimeout(ensureTvsHeaderLogo, 50);
+            setTimeout(() => {
+                ensureTvsHeaderLogo();
+                ensureRuntimeFooter();
+            }, 50);
             return result;
         };
     };
     history.pushState = wrapHistoryMethod('pushState');
     history.replaceState = wrapHistoryMethod('replaceState');
-    window.addEventListener('popstate', () => setTimeout(ensureTvsHeaderLogo, 50));
+    window.addEventListener('popstate', () => setTimeout(() => {
+        ensureTvsHeaderLogo();
+        ensureRuntimeFooter();
+    }, 50));
 
     // Safe Single-Run Initialization
     function init() {
         removeHeaderPageUrlButton();
         ensureTvsHeaderLogo();
+        ensureRuntimeFooter();
         enforceViewServerRestrictions();
         fetchLiveProjectName();
         observeSettingsDialog();
@@ -833,9 +862,10 @@
         init();
     }
 
-    // Heartbeat check (every 800ms) to guarantee View header elements persist across Angular route switches
+    // Heartbeat check (every 800ms) to guarantee View header & footer persist across Angular route switches
     setInterval(() => {
         ensureTvsHeaderLogo();
+        ensureRuntimeFooter();
         enforceViewServerRestrictions();
     }, 800);
 
