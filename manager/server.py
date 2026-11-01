@@ -17,7 +17,14 @@ from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 
 from port_engine import PortEngine
-from project_builder import generate_fuxa_database, sync_tags_to_view_database, get_storage_tags_for_plant, update_project_name_in_db
+from project_builder import (
+    generate_fuxa_database,
+    sync_tags_to_view_database,
+    get_storage_tags_for_plant,
+    get_storage_devices_catalog,
+    get_storage_devices_for_plant,
+    update_project_name_in_db
+)
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from nginx.fuxa_route_generator import generate_nginx_conf, reload_nginx
 
@@ -443,6 +450,90 @@ def sync_all_tags():
         "count": len(synced_list),
         "synced_instances": synced_list,
         "message": f"Successfully synced storage tags to {len(synced_list)} view servers!"
+    }
+
+@app.get("/api/storage-devices")
+@app.get("/api/storage/devices")
+def api_get_storage_devices(plant: int = 9):
+    """Returns available devices and tags connected to InfluxDB on Central Storage for the given plant"""
+    catalog = get_storage_devices_catalog(plant, base_dir=BASE_DIR)
+    return {
+        "success": True,
+        "plant": plant,
+        "count": len(catalog),
+        "devices": catalog
+    }
+
+class ConnectDeviceRequest(BaseModel):
+    plant: int
+    subpath: str = None
+    instance_id: str = None
+    device_key: str
+
+@app.post("/api/storage-devices/connect")
+@app.post("/api/storage/connect-device")
+def api_connect_storage_device(req: ConnectDeviceRequest):
+    """
+    Directly connects/maps a Storage Server device into an instance's project.fuxap.db
+    without duplicate field polling.
+    """
+    plant_id = req.plant
+    catalog = get_storage_devices_catalog(plant_id, base_dir=BASE_DIR)
+    matched_device = None
+    for dev in catalog:
+        if (dev["device_key"].lower() == req.device_key.lower() or 
+            dev["id"].lower() == req.device_key.lower() or 
+            dev["name"].lower() == req.device_key.lower()):
+            matched_device = dev
+            break
+
+    if not matched_device:
+        raise HTTPException(status_code=404, detail=f"Device '{req.device_key}' not found in Plant {plant_id} storage catalog.")
+
+    # Locate instance
+    target_work_dirs = []
+    instances = port_engine.get_all_instances()
+    if req.instance_id and req.instance_id in instances:
+        inst = instances[req.instance_id]
+        work_dir = inst.get("work_dir") or os.path.join(INSTANCES_DIR, f"port_{inst.get('port')}")
+        target_work_dirs.append((req.instance_id, work_dir, inst))
+    elif req.subpath:
+        clean_sub = '/' + req.subpath.strip('/')
+        for i_id, inst in instances.items():
+            inst_sub = (inst.get("subpath") or "").strip('/')
+            if inst_sub and (inst_sub == clean_sub.strip('/') or clean_sub.strip('/').startswith(inst_sub)):
+                work_dir = inst.get("work_dir") or os.path.join(INSTANCES_DIR, f"port_{inst.get('port')}")
+                target_work_dirs.append((i_id, work_dir, inst))
+                break
+
+    # If no instance found by ID/subpath, scan instances directory for matching plant
+    if not target_work_dirs:
+        import glob
+        for p in glob.glob(os.path.join(INSTANCES_DIR, "port_*")):
+            if os.path.isdir(p):
+                target_work_dirs.append(("local", p, {}))
+
+    for i_id, w_dir, inst in target_work_dirs:
+        db_path = os.path.join(w_dir, "project.fuxap.db")
+        if os.path.exists(db_path):
+            try:
+                import sqlite3
+                conn = sqlite3.connect(db_path)
+                cur = conn.cursor()
+                cur.execute(
+                    "INSERT OR REPLACE INTO devices (name, value, connection, cntid, cntpwd) VALUES (?, ?, ?, ?, ?);",
+                    (matched_device["id"], json.dumps(matched_device), "opc-ua", "", "")
+                )
+                conn.commit()
+                conn.close()
+                logger.info(f"Connected storage device '{matched_device['name']}' into {db_path}")
+            except Exception as e:
+                logger.error(f"Error connecting device into {db_path}: {e}")
+
+    return {
+        "success": True,
+        "device": matched_device,
+        "message": f"Successfully connected '{matched_device['name']}' ({matched_device['tag_count']} tags) from Central Storage (InfluxDB)!"
     }
 
 @app.get("/api/instances/{instance_id}/logs")

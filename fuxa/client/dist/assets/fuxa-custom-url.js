@@ -472,6 +472,397 @@
         });
     }
 
+    function getPlantId() {
+        const m = window.location.pathname.match(/\/p(\d+)/);
+        if (m) return parseInt(m[1], 10);
+        const subpath = getBasePath();
+        const m2 = subpath.match(/\/p(\d+)/);
+        if (m2) return parseInt(m2[1], 10);
+        return 9;
+    }
+
+    function showSuccessToast(message) {
+        let toast = document.getElementById('fuxa-success-toast');
+        if (toast) toast.remove();
+        toast = document.createElement('div');
+        toast.id = 'fuxa-success-toast';
+        toast.style.cssText = 'position: fixed; top: 24px; left: 50%; transform: translateX(-50%); background: #15803d; color: #ffffff; padding: 12px 24px; border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); font-size: 13.5px; font-weight: 600; z-index: 100000; display: flex; align-items: center; gap: 10px; font-family: system-ui, -apple-system, sans-serif; border: 1px solid #22c55e;';
+        toast.innerHTML = `<span style="font-size: 18px; font-weight: 900;">✓</span> <span>${message}</span>`;
+        document.body.appendChild(toast);
+        setTimeout(() => { if (toast.parentNode) toast.remove(); }, 4000);
+    }
+
+    const STORAGE_DEVICES_PRESETS = {
+        1: [
+            {
+                device_key: 'Boiler_01',
+                id: 'dev_p1_boiler_01',
+                name: 'Boiler 01',
+                division: 'Boiler House',
+                type: 'OPCUA',
+                influxdb_logging: true,
+                tags: {
+                    'tag_p1_Steam_Pressure_Bar': { id: 'tag_p1_Steam_Pressure_Bar', name: 'Steam_Pressure_Bar', label: 'Steam Pressure (Bar)', type: 'number', address: 'ns=2;s=Plant_1.Boiler_House.Boiler_01.Steam_Pressure_Bar' },
+                    'tag_p1_Steam_Temp_C': { id: 'tag_p1_Steam_Temp_C', name: 'Steam_Temp_C', label: 'Steam Temperature (°C)', type: 'number', address: 'ns=2;s=Plant_1.Boiler_House.Boiler_01.Steam_Temp_C' },
+                    'tag_p1_Burner_Status': { id: 'tag_p1_Burner_Status', name: 'Burner_Status', label: 'Boiler Burner Status', type: 'boolean', address: 'ns=2;s=Plant_1.Boiler_House.Boiler_01.Burner_Status' }
+                }
+            },
+            {
+                device_key: 'Feed_Water_Pump',
+                id: 'dev_p1_feed_water_pump',
+                name: 'Feed Water Pump',
+                division: 'Boiler House',
+                type: 'OPCUA',
+                influxdb_logging: true,
+                tags: {
+                    'tag_p1_Flow_Rate_M3H': { id: 'tag_p1_Flow_Rate_M3H', name: 'Flow_Rate_M3H', label: 'Feed Water Flow Rate (m³/h)', type: 'number', address: 'ns=2;s=Plant_1.Boiler_House.Feed_Water_Pump.Flow_Rate_M3H' },
+                    'tag_p1_Pump_Running': { id: 'tag_p1_Pump_Running', name: 'Pump_Running', label: 'Feed Water Pump State', type: 'boolean', address: 'ns=2;s=Plant_1.Boiler_House.Feed_Water_Pump.Pump_Running' }
+                }
+            }
+        ],
+        2: [
+            {
+                device_key: 'Press_Line_A',
+                id: 'dev_p2_press_line_a',
+                name: 'Press Line A',
+                division: 'Stamping Shop',
+                type: 'OPCUA',
+                influxdb_logging: true,
+                tags: {
+                    'tag_p2_Tonnage_Ton': { id: 'tag_p2_Tonnage_Ton', name: 'Tonnage_Ton', label: 'Main Ram Tonnage (Ton)', type: 'number', address: 'ns=2;s=Plant_2.Stamping_Shop.Press_Line_A.Tonnage_Ton' },
+                    'tag_p2_Cycle_Count': { id: 'tag_p2_Cycle_Count', name: 'Cycle_Count', label: 'Press Cycle Count', type: 'number', address: 'ns=2;s=Plant_2.Stamping_Shop.Press_Line_A.Cycle_Count' },
+                    'tag_p2_Clutch_Engaged': { id: 'tag_p2_Clutch_Engaged', name: 'Clutch_Engaged', label: 'Flywheel Clutch State', type: 'boolean', address: 'ns=2;s=Plant_2.Stamping_Shop.Press_Line_A.Clutch_Engaged' }
+                }
+            }
+        ],
+        3: [
+            {
+                device_key: 'Conveyor_Main',
+                id: 'dev_p3_conveyor_main',
+                name: 'Conveyor Main',
+                division: 'Assembly Shop',
+                type: 'OPCUA',
+                influxdb_logging: true,
+                tags: {
+                    'tag_p3_Line_Speed_MPM': { id: 'tag_p3_Line_Speed_MPM', name: 'Line_Speed_MPM', label: 'Conveyor Line Speed (m/min)', type: 'number', address: 'ns=2;s=Plant_3.Assembly_Shop.Conveyor_Main.Line_Speed_MPM' },
+                    'tag_p3_E_Stop_Active': { id: 'tag_p3_E_Stop_Active', name: 'E_Stop_Active', label: 'Emergency Stop Line Circuit', type: 'boolean', address: 'ns=2;s=Plant_3.Assembly_Shop.Conveyor_Main.E_Stop_Active' },
+                    'tag_p3_Takt_Time_Sec': { id: 'tag_p3_Takt_Time_Sec', name: 'Takt_Time_Sec', label: 'Takt Time Target (s)', type: 'number', address: 'ns=2;s=Plant_3.Assembly_Shop.Conveyor_Main.Takt_Time_Sec' }
+                }
+            }
+        ],
+        4: [
+            {
+                device_key: 'Chiller_Line_1',
+                id: 'dev_p4_chiller_line_1',
+                name: 'Chiller Line 1',
+                division: 'Facility Utilities',
+                type: 'OPCUA',
+                influxdb_logging: true,
+                tags: {
+                    'tag_p4_Chiller_Temp_C': { id: 'tag_p4_Chiller_Temp_C', name: 'Chiller_Temp_C', label: 'Chilled Water Supply (°C)', type: 'number', address: 'ns=2;s=Plant_4.Facility_Utilities.Chiller_Line_1.Chiller_Temp_C' },
+                    'tag_p4_Compressor_Current_A': { id: 'tag_p4_Compressor_Current_A', name: 'Compressor_Current_A', label: 'Compressor Current Draw (A)', type: 'number', address: 'ns=2;s=Plant_4.Facility_Utilities.Chiller_Line_1.Compressor_Current_A' },
+                    'tag_p4_Chiller_Running': { id: 'tag_p4_Chiller_Running', name: 'Chiller_Running', label: 'Chiller Active State', type: 'boolean', address: 'ns=2;s=Plant_4.Facility_Utilities.Chiller_Line_1.Chiller_Running' }
+                }
+            },
+            {
+                device_key: 'Air_Compressor',
+                id: 'dev_p4_air_compressor',
+                name: 'Air Compressor',
+                division: 'Facility Utilities',
+                type: 'OPCUA',
+                influxdb_logging: true,
+                tags: {
+                    'tag_p4_Header_Pressure_Bar': { id: 'tag_p4_Header_Pressure_Bar', name: 'Header_Pressure_Bar', label: 'Main Air Header Pressure (Bar)', type: 'number', address: 'ns=2;s=Plant_4.Facility_Utilities.Air_Compressor.Header_Pressure_Bar' },
+                    'tag_p4_Motor_Speed_RPM': { id: 'tag_p4_Motor_Speed_RPM', name: 'Motor_Speed_RPM', label: 'Compressor Motor Speed (RPM)', type: 'number', address: 'ns=2;s=Plant_4.Facility_Utilities.Air_Compressor.Motor_Speed_RPM' }
+                }
+            }
+        ],
+        9: [
+            {
+                device_key: 'Oven_Line_1',
+                id: 'dev_p9_oven_line_1',
+                name: 'Oven Line 1',
+                division: 'Paintshop Division 6',
+                type: 'OPCUA',
+                influxdb_logging: true,
+                tags: {
+                    'tag_p9_Zone1_Temperature_C': { id: 'tag_p9_Zone1_Temperature_C', name: 'Zone1_Temperature_C', label: 'Curing Oven Zone 1 Temp (°C)', type: 'number', address: 'ns=2;s=Plant_9.Paintshop_Division_6.Oven_Line_1.Zone1_Temperature_C' },
+                    'tag_p9_Zone2_Temperature_C': { id: 'tag_p9_Zone2_Temperature_C', name: 'Zone2_Temperature_C', label: 'Curing Oven Zone 2 Temp (°C)', type: 'number', address: 'ns=2;s=Plant_9.Paintshop_Division_6.Oven_Line_1.Zone2_Temperature_C' },
+                    'tag_p9_Exhaust_Fan_Running': { id: 'tag_p9_Exhaust_Fan_Running', name: 'Exhaust_Fan_Running', label: 'Exhaust Draft Fan State', type: 'boolean', address: 'ns=2;s=Plant_9.Paintshop_Division_6.Oven_Line_1.Exhaust_Fan_Running' },
+                    'tag_p9_Oven_Burner_Fault': { id: 'tag_p9_Oven_Burner_Fault', name: 'Oven_Burner_Fault', label: 'Burner Flame Safety Status', type: 'boolean', address: 'ns=2;s=Plant_9.Paintshop_Division_6.Oven_Line_1.Oven_Burner_Fault' }
+                }
+            },
+            {
+                device_key: 'Spray_Booth_Line_1',
+                id: 'dev_p9_spray_booth_line_1',
+                name: 'Spray Booth Line 1',
+                division: 'Paintshop Division 6',
+                type: 'OPCUA',
+                influxdb_logging: true,
+                tags: {
+                    'tag_p9_Booth_Static_Pressure_Pa': { id: 'tag_p9_Booth_Static_Pressure_Pa', name: 'Booth_Static_Pressure_Pa', label: 'Spray Booth Air Balance (Pa)', type: 'number', address: 'ns=2;s=Plant_9.Paintshop_Division_6.Spray_Booth_Line_1.Booth_Static_Pressure_Pa' },
+                    'tag_p9_Paint_Flow_CC_Min': { id: 'tag_p9_Paint_Flow_CC_Min', name: 'Paint_Flow_CC_Min', label: 'Atomizer Paint Delivery (cc/min)', type: 'number', address: 'ns=2;s=Plant_9.Paintshop_Division_6.Spray_Booth_Line_1.Paint_Flow_CC_Min' },
+                    'tag_p9_Robot_Armed': { id: 'tag_p9_Robot_Armed', name: 'Robot_Armed', label: 'Bell Applicator Robot Armed', type: 'boolean', address: 'ns=2;s=Plant_9.Paintshop_Division_6.Spray_Booth_Line_1.Robot_Armed' },
+                    'tag_p9_Downdraft_Velocity_MPS': { id: 'tag_p9_Downdraft_Velocity_MPS', name: 'Downdraft_Velocity_MPS', label: 'Booth Downdraft Airflow (m/s)', type: 'number', address: 'ns=2;s=Plant_9.Paintshop_Division_6.Spray_Booth_Line_1.Downdraft_Velocity_MPS' }
+                }
+            },
+            {
+                device_key: 'Pre_Treatment_Line_1',
+                id: 'dev_p9_pre_treatment_line_1',
+                name: 'Pre-Treatment Line 1',
+                division: 'Paintshop Division 6',
+                type: 'OPCUA',
+                influxdb_logging: true,
+                tags: {
+                    'tag_p9_Degreasing_Tank_Temp_C': { id: 'tag_p9_Degreasing_Tank_Temp_C', name: 'Degreasing_Tank_Temp_C', label: 'Alkaline Degreasing Temp (°C)', type: 'number', address: 'ns=2;s=Plant_9.Paintshop_Division_6.Pre_Treatment_Line_1.Degreasing_Tank_Temp_C' },
+                    'tag_p9_Rinse_Tank_pH': { id: 'tag_p9_Rinse_Tank_pH', name: 'Rinse_Tank_pH', label: 'Demineralized Rinse Water pH', type: 'number', address: 'ns=2;s=Plant_9.Paintshop_Division_6.Pre_Treatment_Line_1.Rinse_Tank_pH' },
+                    'tag_p9_Circulation_Pump_Running': { id: 'tag_p9_Circulation_Pump_Running', name: 'Circulation_Pump_Running', label: 'Dip Tank Circulation Pump State', type: 'boolean', address: 'ns=2;s=Plant_9.Paintshop_Division_6.Pre_Treatment_Line_1.Circulation_Pump_Running' }
+                }
+            }
+        ]
+    };
+
+    function openAddStorageDeviceModal() {
+        if (document.getElementById('fuxa-storage-device-modal')) return;
+
+        const plantId = getPlantId();
+        const currentBasePath = getBasePath();
+
+        // 1. Gather existing device names from the page canvas / table
+        const existingDeviceNames = new Set();
+        document.querySelectorAll('.map-container .node-flow .device-header, .map-container [class*="node"] .device-header, .table-wrapper mat-row mat-cell:nth-child(2)').forEach(el => {
+            const txt = (el.textContent || '').trim().toLowerCase();
+            if (txt && txt !== 'fuxa server') {
+                existingDeviceNames.add(txt);
+            }
+        });
+
+        // 2. Build overlay modal DOM
+        const overlay = document.createElement('div');
+        overlay.id = 'fuxa-storage-device-modal';
+        overlay.style.cssText = 'position: fixed; inset: 0; background: rgba(15, 23, 42, 0.78); backdrop-filter: blur(6px); z-index: 99999; display: flex; align-items: center; justify-content: center; font-family: system-ui, -apple-system, sans-serif;';
+
+        const modal = document.createElement('div');
+        modal.style.cssText = 'background: #1e293b; border: 1.5px solid #334155; border-radius: 10px; width: 560px; max-width: 94vw; box-shadow: 0 20px 40px rgba(0,0,0,0.5); overflow: hidden; display: flex; flex-direction: column; color: #f8fafc;';
+
+        // Header
+        const header = document.createElement('div');
+        header.style.cssText = 'padding: 16px 20px; background: #0f172a; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between;';
+        header.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 32px; height: 32px; border-radius: 6px; background: #183883; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 900; color: #ffffff;">+</div>
+                <div>
+                    <div style="font-size: 15px; font-weight: 700; color: #f8fafc; letter-spacing: 0.3px;">Add Device from Central Storage</div>
+                    <div style="font-size: 11.5px; color: #94a3b8; margin-top: 1px;">
+                        <span style="color: #4ade80; font-weight: 600;">● InfluxDB Historical Logging Active</span> • Zero Duplicate Field Polling
+                    </div>
+                </div>
+            </div>
+            <button id="fuxa-modal-close-btn" style="background: transparent; border: none; color: #94a3b8; font-size: 20px; cursor: pointer; padding: 4px 8px; border-radius: 4px; line-height: 1;">✕</button>
+        `;
+
+        // Body
+        const body = document.createElement('div');
+        body.style.cssText = 'padding: 18px 20px; overflow-y: auto; max-height: 72vh;';
+
+        // Info Banner
+        const infoBanner = document.createElement('div');
+        infoBanner.style.cssText = 'background: rgba(30, 41, 59, 0.7); border: 1px solid #3b82f6; border-left: 4px solid #3b82f6; border-radius: 5px; padding: 10px 14px; font-size: 12.5px; color: #cbd5e1; line-height: 1.45; margin-bottom: 16px;';
+        infoBanner.innerHTML = `
+            Physical factory devices are connected and logged to InfluxDB by the <strong>Plant ${plantId} Storage Master</strong>. 
+            Select an industrial device below to stream its tags directly into this SCADA view via the high-speed OPC-UA bridge without polling physical PLCs twice.
+        `;
+        body.appendChild(infoBanner);
+
+        // Dropdown Form Group
+        const formGroup = document.createElement('div');
+        formGroup.style.cssText = 'margin-bottom: 14px;';
+        formGroup.innerHTML = `
+            <label style="display: block; font-size: 13px; font-weight: 600; color: #e2e8f0; margin-bottom: 6px;">Select Device Connected to InfluxDB:</label>
+            <select id="fuxa-device-dropdown-select" style="width: 100%; height: 38px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #f8fafc; font-size: 13.5px; padding: 0 10px; outline: none; cursor: pointer;">
+                <option value="">-- Choose a Storage Device --</option>
+            </select>
+        `;
+        body.appendChild(formGroup);
+
+        // Preview Container
+        const previewContainer = document.createElement('div');
+        previewContainer.id = 'fuxa-device-preview-card';
+        previewContainer.style.cssText = 'background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 14px; display: none;';
+        body.appendChild(previewContainer);
+
+        // Footer
+        const footer = document.createElement('div');
+        footer.style.cssText = 'padding: 14px 20px; background: #0f172a; border-top: 1px solid #334155; display: flex; justify-content: flex-end; gap: 10px; align-items: center;';
+        footer.innerHTML = `
+            <button id="fuxa-modal-cancel-btn" style="padding: 7px 16px; background: #334155; color: #e2e8f0; border: 1px solid #475569; border-radius: 5px; font-size: 13px; font-weight: 600; cursor: pointer;">Cancel</button>
+            <button id="fuxa-modal-connect-btn" disabled style="padding: 7px 20px; background: #475569; color: #94a3b8; border: 1px solid #64748b; border-radius: 5px; font-size: 13px; font-weight: 700; cursor: not-allowed; display: inline-flex; align-items: center; gap: 6px;">
+                <span>⚡</span> Connect & Stream Device
+            </button>
+        `;
+
+        modal.appendChild(header);
+        modal.appendChild(body);
+        modal.appendChild(footer);
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        const selectEl = modal.querySelector('#fuxa-device-dropdown-select');
+        const connectBtn = modal.querySelector('#fuxa-modal-connect-btn');
+        const cancelBtn = modal.querySelector('#fuxa-modal-cancel-btn');
+        const closeBtn = modal.querySelector('#fuxa-modal-close-btn');
+
+        const closeModal = () => {
+            overlay.remove();
+        };
+
+        cancelBtn.onclick = closeModal;
+        closeBtn.onclick = closeModal;
+        overlay.onclick = (e) => {
+            if (e.target === overlay) closeModal();
+        };
+
+        // Populate Dropdown from API or presets
+        let availableDevices = STORAGE_DEVICES_PRESETS[plantId] || STORAGE_DEVICES_PRESETS[9] || [];
+        
+        function renderOptions(devices) {
+            selectEl.innerHTML = '';
+            devices.forEach((dev, idx) => {
+                const opt = document.createElement('option');
+                opt.value = idx;
+                const tagCount = dev.tag_count || Object.keys(dev.tags || {}).length;
+                const isAlready = existingDeviceNames.has(dev.name.toLowerCase()) || existingDeviceNames.has(dev.id.toLowerCase());
+                opt.textContent = `${dev.name} (${tagCount} Tags • InfluxDB Logged)${isAlready ? ' — [Already Connected]' : ''}`;
+                selectEl.appendChild(opt);
+            });
+            updatePreview(0, devices);
+        }
+
+        function updatePreview(idx, devices) {
+            const dev = devices[idx];
+            if (!dev) {
+                previewContainer.style.display = 'none';
+                connectBtn.disabled = true;
+                connectBtn.style.background = '#475569';
+                connectBtn.style.color = '#94a3b8';
+                connectBtn.style.cursor = 'not-allowed';
+                return;
+            }
+
+            previewContainer.style.display = 'block';
+            const tagKeys = Object.keys(dev.tags || {});
+            const tagRows = tagKeys.map(k => {
+                const t = dev.tags[k];
+                return `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 4px 6px; border-bottom: 1px solid #334155; font-size: 11.5px; font-family: monospace;">
+                        <span style="color: #60a5fa; font-weight: 600;">${t.name}</span>
+                        <span style="color: #94a3b8; font-size: 10.5px; background: #1e293b; padding: 1px 6px; border-radius: 3px;">${t.type || 'number'}</span>
+                        <span style="color: #64748b; font-size: 10.5px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${t.address || ''}</span>
+                    </div>
+                `;
+            }).join('');
+
+            const isAlready = existingDeviceNames.has(dev.name.toLowerCase()) || existingDeviceNames.has(dev.id.toLowerCase());
+
+            previewContainer.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div style="font-size: 14px; font-weight: 700; color: #f8fafc;">${dev.name}</div>
+                    <span style="background: #14532d; color: #4ade80; border: 1px solid #22c55e; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 700;">
+                        ● Active in InfluxDB
+                    </span>
+                </div>
+                <div style="font-size: 12px; color: #94a3b8; margin-bottom: 10px; line-height: 1.45;">
+                    <div><strong>Plant / Division:</strong> ${dev.division || 'Paintshop Complex'}</div>
+                    <div><strong>OPC-UA Bridge Address:</strong> <code style="color: #cbd5e1; font-size: 11px;">opc.tcp://127.0.0.1:4845/fuxa/server/</code></div>
+                    <div><strong>Data Transmission:</strong> <span style="color: #38bdf8;">Streaming via Central Bridge (Zero PLC Overload)</span></div>
+                </div>
+                <div style="font-size: 11.5px; font-weight: 700; color: #cbd5e1; margin-bottom: 6px;">Available Tags to Stream (${tagKeys.length}):</div>
+                <div style="max-height: 140px; overflow-y: auto; background: #131d2e; border: 1px solid #334155; border-radius: 4px; padding: 4px;">
+                    ${tagRows}
+                </div>
+            `;
+
+            connectBtn.disabled = false;
+            connectBtn.style.cursor = 'pointer';
+            if (isAlready) {
+                connectBtn.style.background = '#0284c7';
+                connectBtn.style.borderColor = '#38bdf8';
+                connectBtn.style.color = '#ffffff';
+                connectBtn.innerHTML = `<span>🔄</span> Re-sync & Update Device Tags`;
+            } else {
+                connectBtn.style.background = '#183883';
+                connectBtn.style.borderColor = '#3b82f6';
+                connectBtn.style.color = '#ffffff';
+                connectBtn.innerHTML = `<span>⚡</span> Connect & Stream Device`;
+            }
+
+            connectBtn.onclick = () => {
+                connectBtn.disabled = true;
+                connectBtn.innerHTML = `Connecting... ⏳`;
+
+                const devPayload = {
+                    id: dev.id,
+                    name: dev.name,
+                    type: 'OPCUA',
+                    enabled: true,
+                    property: {
+                        address: 'opc.tcp://127.0.0.1:4845/fuxa/server/',
+                        options: {
+                            securityMode: 'None',
+                            securityPolicy: 'None'
+                        }
+                    },
+                    tags: dev.tags
+                };
+
+                const token = window.fuxaAccessToken || (JSON.parse(localStorage.getItem('currentUser') || '{}').token) || '';
+                const headers = { 'Content-Type': 'application/json' };
+                if (token) headers['Authorization'] = 'Bearer ' + token;
+
+                // 1. Post to local instance projectData
+                fetch(currentBasePath + '/api/projectData', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({ cmd: 'set-device', data: devPayload })
+                }).catch(() => {});
+
+                // 2. Also register on Fleet Manager
+                fetch('/api/storage-devices/connect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plant: plantId,
+                        subpath: currentBasePath,
+                        device_key: dev.device_key
+                    })
+                }).catch(() => {});
+
+                showSuccessToast(`Device '${dev.name}' connected! Streaming ${tagKeys.length} tags from Central InfluxDB Storage.`);
+                setTimeout(() => {
+                    closeModal();
+                    window.location.reload();
+                }, 850);
+            };
+        }
+
+        // Try to fetch dynamic list from Fleet Manager
+        fetch(`/api/storage-devices?plant=${plantId}`)
+            .then(res => res.ok ? res.json() : null)
+            .then(data => {
+                if (data && data.devices && data.devices.length > 0) {
+                    availableDevices = data.devices;
+                }
+                renderOptions(availableDevices);
+            })
+            .catch(() => {
+                renderOptions(availableDevices);
+            });
+
+        selectEl.onchange = () => {
+            updatePreview(parseInt(selectEl.value, 10), availableDevices);
+        };
+    }
+
     function enforceViewServerRestrictions() {
         if (isMutating) return;
         isMutating = true;
@@ -505,12 +896,44 @@
 
             // 2. In /device view (Connections page)
             if (window.location.pathname.includes('/device')) {
-                const addBtns = document.querySelectorAll('.fab-add, button.fab-add, mat-fab, button[mattooltip*="add"], button[mattooltip*="Add"], button[mattooltip*="aggiungi"]');
+                // Hook floating plus button and ensure it opens the Central Storage device modal
+                const addBtns = document.querySelectorAll('.fab-add, button.fab-add, mat-fab.fab-add');
                 for (let i = 0; i < addBtns.length; i++) {
-                    if (addBtns[i].style.display !== 'none') {
-                        addBtns[i].style.setProperty('display', 'none', 'important');
+                    const btn = addBtns[i];
+                    btn.style.setProperty('display', 'flex', 'important');
+                    btn.style.setProperty('background-color', '#183883', 'important');
+                    btn.style.setProperty('color', '#ffffff', 'important');
+                    btn.setAttribute('mattooltip', 'Add Device from Central Storage & InfluxDB');
+                    btn.title = 'Add Device from Central Storage & InfluxDB';
+                    if (!btn.dataset.storageAddHooked) {
+                        btn.dataset.storageAddHooked = 'true';
+                        btn.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            e.stopImmediatePropagation();
+                            openAddStorageDeviceModal();
+                        }, true);
                     }
                 }
+
+                // Also hook list table add button in list mode
+                const listAddBtns = document.querySelectorAll('.table-wrapper button.remove mat-icon, mat-table button mat-icon');
+                for (let i = 0; i < listAddBtns.length; i++) {
+                    if (listAddBtns[i].textContent.trim() === 'add') {
+                        const pBtn = listAddBtns[i].closest('button');
+                        if (pBtn && !pBtn.dataset.storageAddHooked) {
+                            pBtn.dataset.storageAddHooked = 'true';
+                            pBtn.title = 'Add Device from Central Storage & InfluxDB';
+                            pBtn.addEventListener('click', function(e) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                e.stopImmediatePropagation();
+                                openAddStorageDeviceModal();
+                            }, true);
+                        }
+                    }
+                }
+
                 const notices = document.querySelectorAll('.device-plugins-notice, .plugins-notice');
                 for (let i = 0; i < notices.length; i++) {
                     if (notices[i].style.display !== 'none') {
@@ -543,9 +966,13 @@
                             <div style="color: #cbd5e1; font-size: 13px; line-height: 1.55;">
                                 ${STATUTORY_WARNING_TEXT}
                             </div>
-                            <div style="margin-top: 10px;">
+                            <div style="margin-top: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                                <button id="fuxa-btn-add-storage-device" 
+                                        style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 16px; background: #183883; border: 1px solid #3b82f6; color: #ffffff; border-radius: 4px; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.3); transition: all 0.2s;">
+                                    <span style="font-size: 16px; font-weight: 900; line-height: 1;">+</span> Add Device from Central Storage (InfluxDB)
+                                </button>
                                 <a href="http://${host}:9000" target="_blank" rel="noopener noreferrer" 
-                                   style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 14px; background: #334155; border: 1px solid #64748b; color: #f8fafc; border-radius: 4px; font-size: 12px; font-weight: 600; text-decoration: none;">
+                                   style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; background: #334155; border: 1px solid #64748b; color: #f8fafc; border-radius: 4px; font-size: 12.5px; font-weight: 600; text-decoration: none;">
                                     Open Central Storage Fleet Manager (:9000) ↗
                                 </a>
                             </div>
@@ -554,6 +981,15 @@
                     workPanel.prepend(banner);
                 } else if (banner) {
                     banner.style.cssText = 'background: #1e293b; border: 1.5px solid #eab308; border-left: 6px solid #eab308; border-radius: 6px; padding: 14px 20px; margin: 44px 20px 14px 20px; display: flex; align-items: flex-start; gap: 14px; color: #f1f5f9; font-size: 13.5px; font-family: system-ui, -apple-system, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,0.3); z-index: 100;';
+                }
+
+                const btnAddStorage = document.getElementById('fuxa-btn-add-storage-device');
+                if (btnAddStorage && !btnAddStorage.dataset.attached) {
+                    btnAddStorage.dataset.attached = 'true';
+                    btnAddStorage.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        openAddStorageDeviceModal();
+                    });
                 }
             }
 

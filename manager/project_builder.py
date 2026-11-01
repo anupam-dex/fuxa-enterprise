@@ -171,6 +171,125 @@ def get_storage_tags_for_plant(plant_id: int, division_name: str = None, base_di
 
     return tags_map
 
+def get_storage_devices_catalog(plant_id: int, base_dir: str = None, opcua_endpoint: str = DEFAULT_OPCUA_ENDPOINT) -> list:
+    """
+    Returns a list of distinct industrial devices configured for this plant
+    that are connected to InfluxDB for historical tagging on Central Storage.
+    """
+    plant_id = int(plant_id)
+    plant_catalog = PLANT_STORAGE_TAGS_CATALOG.get(plant_id, {})
+    plant_key = f"Plant_{plant_id}"
+    devices = []
+
+    for div_key, machines in plant_catalog.items():
+        div_title = div_key.replace("_", " ")
+        for machine_key, tag_list in machines.items():
+            machine_title = machine_key.replace("_", " ")
+            dev_id = f"dev_p{plant_id}_{machine_key.lower()}"
+            dev_tags = {}
+            for item in tag_list:
+                t_name, init_val, t_type = item[0], item[1], item[2]
+                t_label = item[3] if len(item) > 3 else t_name.replace("_", " ")
+                opcua_address = f"ns=2;s={plant_key}.{div_key}.{machine_key}.{t_name}"
+                tag_id = f"tag_p{plant_id}_{t_name}"
+                dev_tags[tag_id] = {
+                    "id": tag_id,
+                    "name": t_name,
+                    "label": t_label,
+                    "type": t_type,
+                    "address": opcua_address,
+                    "description": f"Storage Server tag from {machine_title} ({div_title}) • InfluxDB Logged"
+                }
+
+            devices.append({
+                "device_key": machine_key,
+                "id": dev_id,
+                "name": machine_title,
+                "division": div_title,
+                "type": "OPCUA",
+                "enabled": True,
+                "influxdb_logging": True,
+                "property": {
+                    "address": opcua_endpoint,
+                    "options": {
+                        "securityMode": "None",
+                        "securityPolicy": "None"
+                    }
+                },
+                "tag_count": len(dev_tags),
+                "tags": dev_tags
+            })
+
+    # Also inspect dynamic devices in storage instances
+    search_dirs = []
+    if base_dir:
+        search_dirs.append(os.path.join(base_dir, "instances"))
+    search_dirs.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "instances")))
+
+    for s_dir in search_dirs:
+        pattern = os.path.join(s_dir, f"storage_plant_{plant_id}_*", "project.fuxap.db")
+        matches = glob.glob(pattern)
+        for db_file in matches:
+            if os.path.exists(db_file):
+                try:
+                    conn = sqlite3.connect(db_file)
+                    cur = conn.cursor()
+                    cur.execute("SELECT name, value FROM devices;")
+                    for d_name, d_val in cur.fetchall():
+                        if d_name == "server":
+                            continue
+                        try:
+                            dev = json.loads(d_val)
+                            dev_name = dev.get("name", d_name)
+                            if any(d["name"].lower() == dev_name.lower() for d in devices):
+                                continue
+                            dev_tags = dev.get("tags", {})
+                            formatted_tags = {}
+                            for s_tag_id, s_tag in dev_tags.items():
+                                tag_name = s_tag.get("name", s_tag_id)
+                                tag_type = s_tag.get("type", "number")
+                                tag_label = s_tag.get("label", tag_name.replace("_", " "))
+                                addr = s_tag.get("address") or f"ns=2;s={plant_key}.{dev_name}.{tag_name}"
+                                combined_id = f"tag_p{plant_id}_{tag_name}"
+                                formatted_tags[combined_id] = {
+                                    "id": combined_id,
+                                    "name": tag_name,
+                                    "label": tag_label,
+                                    "type": tag_type,
+                                    "address": addr,
+                                    "description": f"Storage Server tag from {dev_name} • InfluxDB Logged"
+                                }
+                            devices.append({
+                                "device_key": dev_name.replace(" ", "_"),
+                                "id": f"dev_p{plant_id}_{d_name.lower()}",
+                                "name": dev_name,
+                                "division": "Central Storage",
+                                "type": "OPCUA",
+                                "enabled": True,
+                                "influxdb_logging": True,
+                                "property": {
+                                    "address": opcua_endpoint,
+                                    "options": {
+                                        "securityMode": "None",
+                                        "securityPolicy": "None"
+                                    }
+                                },
+                                "tag_count": len(formatted_tags),
+                                "tags": formatted_tags
+                            })
+                        except Exception:
+                            pass
+                    conn.close()
+                except Exception:
+                    pass
+
+    return devices
+
+def get_storage_devices_for_plant(plant_id: int, base_dir: str = None, opcua_endpoint: str = DEFAULT_OPCUA_ENDPOINT) -> dict:
+    """Returns a dict of devices keyed by device ID"""
+    catalog = get_storage_devices_catalog(plant_id, base_dir=base_dir, opcua_endpoint=opcua_endpoint)
+    return {dev["id"]: dev for dev in catalog}
+
 def generate_fuxa_database(
     target_dir: str,
     plant_id: int,
@@ -279,29 +398,13 @@ def generate_fuxa_database(
     }
     cur.execute("INSERT OR REPLACE INTO general (name, value) VALUES (?, ?);", ("layout", json.dumps(layout_data)))
 
-    # 2. Extract and pre-populate all Storage Server tags for this Plant
-    storage_tags = get_storage_tags_for_plant(plant_id, division_name, base_dir=base_dir)
-
-    # Pre-configure OPC-UA Storage Device
-    device_id = f"dev_opcua_plant_{plant_id}"
-    device_obj = {
-        "id": device_id,
-        "name": f"Plant_{plant_id}_Storage_OPCUA",
-        "type": "OPCUA",
-        "enabled": True,
-        "property": {
-            "address": opcua_endpoint,
-            "options": {
-                "securityMode": "None",
-                "securityPolicy": "None"
-            }
-        },
-        "tags": storage_tags
-    }
-    cur.execute(
-        "INSERT OR REPLACE INTO devices (name, value, connection, cntid, cntpwd) VALUES (?, ?, ?, ?, ?);",
-        (device_id, json.dumps(device_obj), "opc-ua", "", "")
-    )
+    # 2. Extract and pre-populate distinct Storage Server devices for this Plant
+    storage_devices = get_storage_devices_for_plant(plant_id, base_dir=base_dir, opcua_endpoint=opcua_endpoint)
+    for dev_id, dev_obj in storage_devices.items():
+        cur.execute(
+            "INSERT OR REPLACE INTO devices (name, value, connection, cntid, cntpwd) VALUES (?, ?, ?, ?, ?);",
+            (dev_id, json.dumps(dev_obj), "opc-ua", "", "")
+        )
 
     # 3. Create Default HMI View with Clean Background (TVS Logo is placed in the top header)
     svg_canvas = (
@@ -349,48 +452,37 @@ def sync_tags_to_view_database(target_dir: str, plant_id: int, base_dir: str = N
     if not os.path.exists(db_path):
         return {}
 
-    storage_tags = get_storage_tags_for_plant(plant_id, base_dir=base_dir)
+    storage_devices = get_storage_devices_for_plant(plant_id, base_dir=base_dir)
+    all_tags = {}
 
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
 
-    device_id = f"dev_opcua_plant_{plant_id}"
-    cur.execute("SELECT value, connection, cntid, cntpwd FROM devices WHERE name = ?;", (device_id,))
-    row = cur.fetchone()
+    # Pre-populate / sync individual storage devices connected to InfluxDB
+    for dev_id, dev_obj in storage_devices.items():
+        cur.execute("SELECT value, connection, cntid, cntpwd FROM devices WHERE name = ?;", (dev_id,))
+        row = cur.fetchone()
+        if row:
+            dev_data = json.loads(row[0])
+            existing_tags = dev_data.get("tags", {})
+            for t_id, t_info in dev_obj["tags"].items():
+                existing_tags[t_id] = t_info
+            dev_data["tags"] = existing_tags
+            if "property" not in dev_data or not dev_data["property"]:
+                dev_data["property"] = {}
+            dev_data["property"]["address"] = DEFAULT_OPCUA_ENDPOINT
+            dev_data["enabled"] = True
+            cur.execute("UPDATE devices SET value = ? WHERE name = ?;", (json.dumps(dev_data), dev_id))
+            all_tags.update(existing_tags)
+        else:
+            cur.execute(
+                "INSERT OR REPLACE INTO devices (name, value, connection, cntid, cntpwd) VALUES (?, ?, ?, ?, ?);",
+                (dev_id, json.dumps(dev_obj), "opc-ua", "", "")
+            )
+            all_tags.update(dev_obj["tags"])
 
-    if row:
-        dev_obj = json.loads(row[0])
-        existing_tags = dev_obj.get("tags", {})
-        # Merge storage tags
-        for t_id, t_data in storage_tags.items():
-            existing_tags[t_id] = t_data
-        dev_obj["tags"] = existing_tags
-        # Ensure endpoint is correct
-        if "property" not in dev_obj or not dev_obj["property"]:
-            dev_obj["property"] = {}
-        dev_obj["property"]["address"] = DEFAULT_OPCUA_ENDPOINT
-        dev_obj["enabled"] = True
-
-        cur.execute("UPDATE devices SET value = ? WHERE name = ?;", (json.dumps(dev_obj), device_id))
-    else:
-        dev_obj = {
-            "id": device_id,
-            "name": f"Plant_{plant_id}_Storage_OPCUA",
-            "type": "OPCUA",
-            "enabled": True,
-            "property": {
-                "address": DEFAULT_OPCUA_ENDPOINT,
-                "options": {
-                    "securityMode": "None",
-                    "securityPolicy": "None"
-                }
-            },
-            "tags": storage_tags
-        }
-        cur.execute(
-            "INSERT OR REPLACE INTO devices (name, value, connection, cntid, cntpwd) VALUES (?, ?, ?, ?, ?);",
-            (device_id, json.dumps(dev_obj), "opc-ua", "", "")
-        )
+    # Clean up obsolete monolithic device row if individual devices are present
+    cur.execute("DELETE FROM devices WHERE name = ?;", (f"dev_opcua_plant_{plant_id}",))
 
     # Database integrity & self-healing
     try:
@@ -465,7 +557,7 @@ def sync_tags_to_view_database(target_dir: str, plant_id: int, base_dir: str = N
 
     conn.commit()
     conn.close()
-    return storage_tags
+    return all_tags
 
 def update_project_name_in_db(db_path: str, new_name: str) -> bool:
     """
