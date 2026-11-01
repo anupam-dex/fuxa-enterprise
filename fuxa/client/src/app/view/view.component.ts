@@ -68,7 +68,9 @@ export class ViewComponent implements OnInit, AfterViewInit, OnDestroy {
             this.hmi = hmi;
         }
         if (this.hmi && this.hmi.views && this.hmi.views.length > 0) {
-            this.startView = this.hmi.views.find(x => x.name === this.viewName);
+            this.startView = (this.viewName ? this.hmi.views.find(x => x.name === this.viewName) : null)
+                || this.hmi.views.find(x => x.id === this.hmi.layout?.start)
+                || this.hmi.views[0];
             this.setBackground();
             if (this.startView && this.fuxaview) {
                 this.fuxaview.loadHmi(this.startView);
