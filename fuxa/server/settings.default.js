@@ -11,7 +11,7 @@ module.exports = {
 
     // Per-section informational messages for editor areas
     editorSectionMessages: {
-        hideDevicePluginsNotice: false
+        hideDevicePluginsNotice: true
     },
 
     // The tcp port that the FUXA web server is listening on
