@@ -59,25 +59,10 @@ module.exports = {
          * Install the plugin
          */
         pluginsApp.post("/api/plugins", secureFnc, function (req, res, next) {
-            const permission = checkGroupsFnc(req);
-            if (res.statusCode === 403) {
-                runtime.logger.error("api post plugins: Tocken Expired");
-            } else if (!authJwt.haveAdminPermission(permission)) {
-                res.status(401).json({ error: "unauthorized_error", message: "Unauthorized!" });
-                runtime.logger.error("api post plugins: Unauthorized");
-            } else {
-                runtime.plugins.addPlugin(req.body.params, true).then(function (data) {
-                    runtime.devices.update();
-                    res.end();
-                }).catch(function (err) {
-                    if (err.code) {
-                        res.status(400).json({ error: err.code, message: err.message });
-                    } else {
-                        res.status(400).json({ error: "unexpected_error", message: err.toString() });
-                    }
-                    runtime.logger.error("api install plugins: " + err.message);
-                });
-            }
+            return res.status(403).json({
+                error: "plugins_disabled",
+                message: "Adding connections facility is no longer supported; redirect to storage server instance for adding field PLC or gateway device. Once they added in respective storage server, device will be listed to the view page server automatically."
+            });
         });
 
         /**

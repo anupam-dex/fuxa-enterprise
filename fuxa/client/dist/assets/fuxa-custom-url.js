@@ -276,11 +276,150 @@
         updateHeaderBadge(liveProjectName);
     }
 
+    const STATUTORY_WARNING_TEXT = "Adding connections facility is no longer supported; redirect to storage server instance for adding field PLC or gateway device. Once they added in respective storage server, device will be listed to the view page server automatically.";
+
+    function showStatutoryWarningModal() {
+        if (document.getElementById('fuxa-statutory-modal-backdrop')) return;
+
+        const backdrop = document.createElement('div');
+        backdrop.id = 'fuxa-statutory-modal-backdrop';
+        backdrop.style.cssText = 'position: fixed; inset: 0; background: rgba(0,0,0,0.78); backdrop-filter: blur(4px); z-index: 9999999; display: flex; align-items: center; justify-content: center; font-family: system-ui, -apple-system, sans-serif; padding: 20px;';
+        
+        const host = window.location.hostname || 'localhost';
+        const storageManagerUrl = `http://${host}:9000`;
+        const viewDeviceUrl = `${getBasePath()}/device`;
+
+        backdrop.innerHTML = `
+            <div style="background: #1e293b; border: 1.5px solid #eab308; border-radius: 8px; width: 620px; max-width: 95vw; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7); overflow: hidden;">
+                <div style="background: rgba(234, 179, 8, 0.16); border-bottom: 1px solid rgba(234, 179, 8, 0.3); padding: 18px 22px; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="font-size: 26px;">⚠️</span>
+                        <div>
+                            <h3 style="margin: 0; font-size: 16px; font-weight: 700; color: #facc15; letter-spacing: 0.5px;">Statutory Notice: Connection Facility Restricted</h3>
+                            <span style="font-size: 11px; color: #94a3b8;">FUXA Enterprise SCADA &bull; View Server Policy</span>
+                        </div>
+                    </div>
+                    <button id="fuxa-statutory-x-btn" style="background: transparent; border: none; color: #94a3b8; font-size: 20px; cursor: pointer; padding: 4px 8px;">✕</button>
+                </div>
+                <div style="padding: 24px 22px; color: #f1f5f9; font-size: 14px; line-height: 1.6;">
+                    <div style="background: rgba(15, 23, 42, 0.7); border-left: 4px solid #eab308; padding: 16px 18px; border-radius: 0 6px 6px 0; margin-bottom: 16px; font-size: 14px; color: #fef08a;">
+                        <strong>Adding connections facility is no longer supported;</strong> redirect to storage server instance for adding field PLC or gateway device. Once they added in respective storage server, device will be listed to the view page server automatically.
+                    </div>
+                    <p style="margin: 0; font-size: 13px; color: #cbd5e1;">
+                        View servers operate in display-only mode. Field PLC / Gateway devices cannot be added locally. All connections and tags are synchronized automatically through the Central Storage OPC-UA Bridge.
+                    </p>
+                </div>
+                <div style="background: #0f172a; padding: 16px 22px; border-top: 1px solid #334155; display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;">
+                    <button id="fuxa-statutory-close-btn" style="padding: 8px 16px; background: transparent; border: 1px solid #475569; color: #cbd5e1; border-radius: 4px; font-size: 13px; font-weight: 500; cursor: pointer;">
+                        Dismiss
+                    </button>
+                    <a href="${storageManagerUrl}" target="_blank" rel="noopener noreferrer" style="padding: 8px 16px; background: #334155; border: 1px solid #64748b; color: #f8fafc; border-radius: 4px; font-size: 13px; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                        Open Storage Fleet Manager (:9000) ↗
+                    </a>
+                    <button id="fuxa-statutory-view-btn" style="padding: 8px 18px; background: #0284c7; border: none; color: #fff; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer;">
+                        View Mapped Connections (Read-Only)
+                    </button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(backdrop);
+
+        const close = () => backdrop.remove();
+        backdrop.querySelector('#fuxa-statutory-close-btn').addEventListener('click', close);
+        backdrop.querySelector('#fuxa-statutory-x-btn').addEventListener('click', close);
+        backdrop.querySelector('#fuxa-statutory-view-btn').addEventListener('click', () => {
+            close();
+            window.location.href = viewDeviceUrl;
+        });
+        backdrop.addEventListener('click', (e) => {
+            if (e.target === backdrop) close();
+        });
+    }
+
+    function enforceViewServerRestrictions() {
+        // 1. Remove "Plugins" button card from Setup / Settings dialog
+        document.querySelectorAll('app-setup .btn-card, .dlg-container .btn-card').forEach(card => {
+            const btn = card.querySelector('button');
+            if (!btn) return;
+            const text = btn.textContent ? btn.textContent.toLowerCase() : '';
+            const icon = card.querySelector('mat-icon');
+            const iconText = icon ? icon.textContent.trim().toLowerCase() : '';
+            if (text.includes('plugin') || iconText === 'extension') {
+                card.style.setProperty('display', 'none', 'important');
+            }
+        });
+
+        // 2. Intercept "Connections" button in Setup / Settings dialog with Statutory Warning
+        document.querySelectorAll('app-setup .btn-card, .dlg-container .btn-card').forEach(card => {
+            const btn = card.querySelector('button');
+            if (!btn) return;
+            const text = btn.textContent ? btn.textContent.toLowerCase() : '';
+            const icon = card.querySelector('mat-icon');
+            const iconText = icon ? icon.textContent.trim().toLowerCase() : '';
+            if (text.includes('connection') || iconText === 'lan') {
+                if (!btn.dataset.statutoryHooked) {
+                    btn.dataset.statutoryHooked = 'true';
+                    btn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        // Close setup dialog
+                        const closeBtn = document.querySelector('app-setup .dialog-close-btn, .dlg-container .dialog-close-btn');
+                        if (closeBtn) closeBtn.click();
+                        showStatutoryWarningModal();
+                    }, true);
+                }
+            }
+        });
+
+        // 3. In /device view (Connections page)
+        if (window.location.pathname.includes('/device')) {
+            // Hide floating "Add Item / Device" FAB button
+            document.querySelectorAll('.fab-add, button.fab-add, mat-fab').forEach(el => {
+                el.style.setProperty('display', 'none', 'important');
+            });
+            // Hide table add buttons in device list
+            document.querySelectorAll('button[mattooltip*="add"], button[mattooltip*="Add"], button[mattooltip*="aggiungi"]').forEach(el => {
+                if (el.closest('app-device-map, app-device-list, app-device')) {
+                    el.style.setProperty('display', 'none', 'important');
+                }
+            });
+            // Hide any plugin notice or open-plugin banner in /device
+            document.querySelectorAll('.device-plugins-notice, .plugins-notice').forEach(el => {
+                el.style.setProperty('display', 'none', 'important');
+            });
+
+            // Inject Statutory Warning Banner at top of /device if not present
+            const workPanel = document.querySelector('app-device .work-panel, app-device');
+            if (workPanel && !document.getElementById('fuxa-statutory-device-banner')) {
+                const banner = document.createElement('div');
+                banner.id = 'fuxa-statutory-device-banner';
+                banner.style.cssText = 'background: rgba(234, 179, 8, 0.12); border: 1px solid rgba(234, 179, 8, 0.4); border-radius: 6px; padding: 12px 18px; margin: 12px 16px; display: flex; align-items: center; gap: 12px; color: #fef08a; font-size: 13px; font-weight: 500; font-family: system-ui, -apple-system, sans-serif; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); z-index: 100;';
+                banner.innerHTML = `
+                    <span style="font-size: 22px; line-height: 1;">⚠️</span>
+                    <div style="flex: 1; line-height: 1.5;">
+                        <strong style="color: #facc15; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 2px;">Statutory Restriction: Read-Only Mapped View</strong>
+                        Adding connections facility is no longer supported; redirect to storage server instance for adding field PLC or gateway device. Once they added in respective storage server, device will be listed to the view page server automatically.
+                    </div>
+                `;
+                workPanel.prepend(banner);
+            }
+        }
+
+        // 4. If URL ends with /plugins, redirect to /editor and display warning
+        if (window.location.pathname.includes('/plugins')) {
+            window.location.href = getBasePath() + '/editor';
+            setTimeout(showStatutoryWarningModal, 400);
+        }
+    }
+
     // Observe Settings Dialog (⚙️) to inject Custom Subpath & Page URLs card
     function observeSettingsDialog() {
         removeHeaderPageUrlButton();
+        enforceViewServerRestrictions();
         const observer = new MutationObserver(() => {
             removeHeaderPageUrlButton();
+            enforceViewServerRestrictions();
             const dialog = document.querySelector('app-app-settings, .mat-mdc-dialog-container');
             if (dialog && !dialog.querySelector('.custom-url-setting-field')) {
                 const portInput = dialog.querySelector('input[numberonly], input[disabled]');
@@ -532,16 +671,22 @@
 
     // Init
     ensureTvsHeaderLogo();
+    enforceViewServerRestrictions();
     fetchLiveProjectName();
-    setInterval(ensureTvsHeaderLogo, 1500);
+    setInterval(() => {
+        ensureTvsHeaderLogo();
+        enforceViewServerRestrictions();
+    }, 1200);
 
     window.addEventListener('DOMContentLoaded', () => {
         ensureTvsHeaderLogo();
+        enforceViewServerRestrictions();
         fetchLiveProjectName();
         observeSettingsDialog();
     });
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
         ensureTvsHeaderLogo();
+        enforceViewServerRestrictions();
         fetchLiveProjectName();
         observeSettingsDialog();
     }

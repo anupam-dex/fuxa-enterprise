@@ -873,6 +873,16 @@ function startFuxa() {
                     app.post(BASE_PATH + '/api/custom-subpath', handleCustomSubpath);
                 }
 
+                const STATUTORY_WARNING = "Adding connections facility is no longer supported; redirect to storage server instance for adding field PLC or gateway device. Once they added in respective storage server, device will be listed to the view page server automatically.";
+                const blockPluginsHandler = (req, res) => res.status(403).json({ error: "plugins_disabled", message: STATUTORY_WARNING });
+
+                app.post('/api/plugins', blockPluginsHandler);
+                app.post('/api/plugins/*', blockPluginsHandler);
+                if (BASE_PATH) {
+                    app.post(BASE_PATH + '/api/plugins', blockPluginsHandler);
+                    app.post(BASE_PATH + '/api/plugins/*', blockPluginsHandler);
+                }
+
                 if (BASE_PATH) {
                     app.use(BASE_PATH + '/', FUXA.httpApi);
                 }
