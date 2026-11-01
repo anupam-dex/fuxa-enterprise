@@ -6,6 +6,23 @@
 (function () {
     console.log('[FUXA-Enterprise] Settings Custom URL & Project Manager active.');
 
+    // Reload loop circuit breaker: prevents UI flickering / infinite reload loops
+    try {
+        const RELOAD_KEY = 'fuxa_reload_window';
+        const now = Date.now();
+        let history = JSON.parse(sessionStorage.getItem(RELOAD_KEY) || '[]');
+        history = history.filter(ts => (now - ts) < 15000);
+        history.push(now);
+        sessionStorage.setItem(RELOAD_KEY, JSON.stringify(history));
+        if (history.length > 3) {
+            console.warn('[FUXA] Infinite reload loop detected! Throttling window.location.reload to maintain UI stability.');
+            const origReload = window.location.reload.bind(window.location);
+            window.location.reload = function() {
+                console.warn('[FUXA] Suppressed window.location.reload() to stop page flickering loop.');
+            };
+        }
+    } catch (e) {}
+
     let liveProjectName = localStorage.getItem('fuxa_project_name') || '';
 
     function getBasePath() {

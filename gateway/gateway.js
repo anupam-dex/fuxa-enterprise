@@ -284,7 +284,13 @@ server.on('upgrade', (req, socket, head) => {
         // Replay initial HTTP upgrade handshake with rewritten path
         proxySocket.write(`${req.method} ${proxyPath} HTTP/${req.httpVersion}\r\n`);
         for (const [key, val] of Object.entries(req.headers)) {
-            proxySocket.write(`${key}: ${val}\r\n`);
+            if (Array.isArray(val)) {
+                for (const v of val) {
+                    proxySocket.write(`${key}: ${v}\r\n`);
+                }
+            } else if (val !== undefined && val !== null) {
+                proxySocket.write(`${key}: ${val}\r\n`);
+            }
         }
         proxySocket.write('\r\n');
         if (head && head.length) {
@@ -301,6 +307,14 @@ server.on('upgrade', (req, socket, head) => {
     });
 
     socket.on('error', () => {
+        proxySocket.destroy();
+    });
+
+    proxySocket.on('close', () => {
+        socket.destroy();
+    });
+
+    socket.on('close', () => {
         proxySocket.destroy();
     });
 });

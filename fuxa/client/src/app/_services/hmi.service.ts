@@ -735,11 +735,21 @@ export class HmiService {
 
     private async safeReloadIfServerAlive() {
         try {
+            // Guard against infinite reload loops (circuit breaker: max 1 reload per 30 seconds)
+            const RELOAD_KEY = 'fuxa_last_safe_reload';
+            const lastReload = parseInt(sessionStorage.getItem(RELOAD_KEY) || '0', 10);
+            const now = Date.now();
+            if (now - lastReload < 30000) {
+                console.warn('[FUXA] Suppressing reload loop: page was already reloaded within last 30s.');
+                return;
+            }
+
             // Small test request to verify if server is reachable
             const res = await firstValueFrom(
                 this.http.get<string>(this.endPointConfig + '/api/version')
             );
             if (res) {
+                sessionStorage.setItem(RELOAD_KEY, String(now));
                 console.warn('Server reachable → forcing reload');
                 window.location.reload();
             } else {
