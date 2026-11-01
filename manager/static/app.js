@@ -1,72 +1,171 @@
-// FUXA Fleet Manager Frontend Logic
+// FUXA Fleet Manager - Professional Topological SCADA Orchestrator
+
+let currentMatrix = [];
+let allInstancesMap = {};
+let selectedPlantFilter = 'all';
+let searchQuery = '';
 
 async function loadMatrix() {
     try {
         const res = await fetch('/api/matrix');
         const data = await res.json();
-        renderPlantGrid(data.matrix);
-        document.getElementById('stat-plants').textContent = data.matrix.length;
+        currentMatrix = data.matrix || [];
+        renderTopology(currentMatrix);
     } catch (err) {
         console.error("Failed to load matrix:", err);
     }
 }
 
-let allInstancesMap = {};
-
-function renderPlantGrid(matrix) {
-    const grid = document.getElementById('plant-grid');
-    grid.innerHTML = '';
+function renderTopology(matrix) {
     allInstancesMap = {};
+    let totalInstances = 0;
+    const plantStrip = document.getElementById('plant-strip');
+    const filterPills = document.getElementById('filter-pills-bar');
+    
+    plantStrip.innerHTML = '';
+    
+    // Header Filter Pills setup
+    let pillsHtml = `<button class="filter-pill ${selectedPlantFilter === 'all' ? 'active' : ''}" onclick="setPlantFilter('all')">All Plants</button>`;
 
     matrix.forEach(plant => {
+        const pId = plant.plant_id;
+        const pCount = (plant.instances || []).length;
+        totalInstances += pCount;
+
+        plant.instances.forEach(inst => {
+            allInstancesMap[inst.id] = { ...inst, plant_name: plant.name, storage_port: plant.storage_port };
+        });
+
+        // Add filter pill
+        pillsHtml += `<button class="filter-pill ${selectedPlantFilter === String(pId) ? 'active' : ''}" onclick="setPlantFilter('${pId}')">${plant.name.split(' - ')[0]} (${pCount})</button>`;
+
+        // Plant Strip Card
+        const isSelected = selectedPlantFilter === String(pId);
         const card = document.createElement('div');
-        card.className = 'plant-card';
-
-        const storageStatusClass = plant.storage_online ? 'live' : '';
-        const storageText = plant.storage_online ? 'Online' : 'Standby / Sim';
-
-        let instancesHtml = '';
-        if (plant.instances.length === 0) {
-            instancesHtml = `<div style="color: var(--text-muted); font-size: 0.85rem; padding: 10px 0;">No active view servers created yet.</div>`;
-        } else {
-            instancesHtml = plant.instances.map(inst => {
-                allInstancesMap[inst.id] = inst;
-                return `
-                <div class="instance-row">
-                    <div class="instance-info">
-                        <div class="instance-name">${inst.name}</div>
-                        <div class="instance-sub">Port: <strong>${inst.port}</strong> | ${inst.subpath}</div>
-                    </div>
-                    <div class="instance-actions">
-                        <a href="${window.location.protocol}//${window.location.hostname}:${inst.port}/editor" target="_blank" class="btn btn-primary btn-sm">Editor</a>
-                        <a href="${window.location.protocol}//${window.location.hostname}:${inst.port}/home" target="_blank" class="btn btn-secondary btn-sm">View</a>
-                        <a href="${window.location.protocol}//${window.location.hostname}${inst.subpath}/editor" target="_blank" title="Open via OT Gateway (Port 80)" class="btn btn-secondary btn-sm">OT Link</a>
-                        <button onclick="editInstance('${inst.id}')" class="btn btn-secondary btn-sm" title="Edit View Server">✏️ Edit</button>
-                        <button onclick="viewLogs('${inst.id}')" class="btn btn-secondary btn-sm" title="View Live Logs & Alarms">Logs</button>
-                        <button onclick="deleteInstance('${inst.id}')" class="btn btn-danger btn-sm">&#128465;</button>
-                    </div>
-                </div>
-            `;
-            }).join('');
-        }
+        card.className = `plant-strip-card ${isSelected ? 'active' : ''}`;
+        card.onclick = () => setPlantFilter(isSelected ? 'all' : String(pId));
 
         card.innerHTML = `
-            <div class="plant-card-header">
+            <div class="plant-strip-top">
                 <div>
-                    <div class="plant-title">${plant.name}</div>
-                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">Plant ID: ${plant.plant_id}</div>
+                    <div class="plant-strip-name">${plant.name}</div>
+                    <div class="plant-strip-id">Plant ID: ${pId}</div>
                 </div>
-                <div class="storage-pill">
-                    <span class="dot ${storageStatusClass}"></span>
-                    Storage: :${plant.storage_port}
-                </div>
+                <span class="views-count-pill ${pCount > 0 ? 'has-active' : ''}">${pCount} Active</span>
             </div>
-            <div class="instances-list">
-                <div style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Deployed View Servers:</div>
-                ${instancesHtml}
+            <div class="plant-strip-bottom">
+                <span class="storage-chip">
+                    <span class="dot live"></span> Storage :${plant.storage_port}
+                </span>
+                <span style="font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono);">InfluxDB Master</span>
             </div>
         `;
-        grid.appendChild(card);
+        plantStrip.appendChild(card);
+    });
+
+    filterPills.innerHTML = pillsHtml;
+
+    // Update global telemetry counters
+    document.getElementById('stat-views-total').textContent = totalInstances;
+    document.getElementById('pipe-active-count').textContent = `${totalInstances} Deployed Lines`;
+
+    renderInstancesList();
+}
+
+function setPlantFilter(plantId) {
+    selectedPlantFilter = plantId;
+    renderTopology(currentMatrix);
+}
+
+function handleSearchInput() {
+    searchQuery = (document.getElementById('filter-search')?.value || '').toLowerCase().trim();
+    renderInstancesList();
+}
+
+function renderInstancesList() {
+    const list = document.getElementById('instances-list');
+    list.innerHTML = '';
+
+    const host = window.location.hostname || '127.0.0.1';
+    const proto = window.location.protocol || 'http:';
+
+    let instances = Object.values(allInstancesMap);
+
+    // Apply plant filter
+    if (selectedPlantFilter !== 'all') {
+        instances = instances.filter(i => String(i.plant) === String(selectedPlantFilter));
+    }
+
+    // Apply search filter
+    if (searchQuery) {
+        instances = instances.filter(i => 
+            (i.name && i.name.toLowerCase().includes(searchQuery)) ||
+            (i.subpath && i.subpath.toLowerCase().includes(searchQuery)) ||
+            (String(i.port).includes(searchQuery)) ||
+            (i.plant_name && i.plant_name.toLowerCase().includes(searchQuery))
+        );
+    }
+
+    if (instances.length === 0) {
+        list.innerHTML = `
+            <div class="empty-state">
+                <div style="font-size: 1.1rem; font-weight: 600; margin-bottom: 6px;">No view servers found matching this view</div>
+                <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px;">
+                    ${selectedPlantFilter !== 'all' ? `Plant ${selectedPlantFilter} currently has no active HMI view servers deployed.` : 'Get started by creating your first distributed view server.'}
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="openCreateModal()">+ Create New Project</button>
+            </div>
+        `;
+        return;
+    }
+
+    instances.forEach(inst => {
+        const row = document.createElement('div');
+        row.className = 'instance-card-row';
+
+        const directEditor = `${proto}//${host}:${inst.port}/editor`;
+        const directView = `${proto}//${host}:${inst.port}/home`;
+        const otLink = `${proto}//${host}${inst.subpath}/editor`;
+
+        row.innerHTML = `
+            <!-- Col 1: Server Identity & Plant -->
+            <div class="col-server">
+                <div class="title-row">
+                    <span class="dot live" title="Instance Live"></span>
+                    <span class="name">${inst.name}</span>
+                </div>
+                <div class="plant-tag">${inst.plant_name || `Plant ${inst.plant}`} &bull; Div ${inst.division || 6} (Line ${inst.line || 1})</div>
+            </div>
+
+            <!-- Col 2: Ports & Subpath -->
+            <div class="col-routing">
+                <div class="port-badge">Port: ${inst.port}</div>
+                <div class="subpath-badge">${inst.subpath}</div>
+            </div>
+
+            <!-- Col 3: Data Source -->
+            <div class="col-data-source">
+                <div class="source-label">Source Bridge</div>
+                <div class="source-val">Storage :${inst.storage_port || 5900}</div>
+            </div>
+
+            <!-- Col 4: OT Port 80 Clean Reverse Proxy Link -->
+            <div class="col-ot-link">
+                <a href="${otLink}" target="_blank" class="ot-link-pill" title="Open via OT Reverse Proxy (Port 80)">
+                    <span>🌐</span> ${inst.subpath}/editor
+                </a>
+            </div>
+
+            <!-- Col 5: Actions -->
+            <div class="col-actions">
+                <a href="${directEditor}" target="_blank" class="btn btn-primary btn-sm" title="Open Editor">Editor</a>
+                <a href="${directView}" target="_blank" class="btn btn-secondary btn-sm" title="Open Operator View">View</a>
+                <button onclick="editInstance('${inst.id}')" class="btn btn-secondary btn-sm" title="Edit View Server">✏️ Edit</button>
+                <button onclick="viewLogs('${inst.id}')" class="btn btn-secondary btn-sm" title="View Logs">Logs</button>
+                <button onclick="deleteInstance('${inst.id}')" class="btn btn-danger btn-sm" title="Delete Instance">&#128465;</button>
+            </div>
+        `;
+        list.appendChild(row);
     });
 }
 
@@ -132,7 +231,7 @@ async function submitCreateProject() {
         if (data.success) {
             closeCreateModal();
             loadMatrix();
-            alert(`Instance Created Successfully!\n\nPort: ${data.instance.port}\nSubpath: ${data.instance.subpath}\n\nPre-loaded with OPC-UA Storage Server connection!`);
+            alert(`Instance Created Successfully!\n\nPort: ${data.instance.port}\nSubpath: ${data.instance.subpath}\n\nPre-loaded with Central OPC-UA Bridge connection!`);
         } else {
             alert('Failed to create instance: ' + (data.detail || 'Unknown error'));
         }
@@ -214,35 +313,25 @@ async function viewLogs(id) {
     const modal = document.getElementById('logs-modal');
     const content = document.getElementById('logs-content');
     const title = document.getElementById('logs-title');
-    if (!modal) return;
-    
+
+    modal.classList.add('show');
     title.textContent = `Live Logs: ${id}`;
-    content.textContent = 'Fetching latest logs and alarms...';
-    modal.classList.add('active');
+    content.textContent = 'Loading logs...';
 
     try {
-        const res = await fetch(`/api/instances/${id}/logs?lines=150`);
+        const res = await fetch(`/api/instances/${id}/logs`);
         const data = await res.json();
-        const allLogs = (data.logs || []).join('');
-        const allErrs = (data.errors || []).join('');
-        
-        let display = '';
-        if (allErrs) {
-            display += `=== RECENT EXCEPTIONS / ERRORS ===\n${allErrs}\n\n`;
-        }
-        display += `=== RUNTIME LOGS & ALARMS ===\n${allLogs || 'No log entries recorded yet.'}`;
-        content.textContent = display;
+        content.textContent = data.logs || 'No logs available.';
         content.scrollTop = content.scrollHeight;
     } catch (e) {
-        content.textContent = 'Failed to load logs: ' + e.message;
+        content.textContent = 'Error loading logs: ' + e.message;
     }
 }
 
 function closeLogsModal() {
-    const modal = document.getElementById('logs-modal');
-    if (modal) modal.classList.remove('active');
+    document.getElementById('logs-modal').classList.remove('show');
 }
 
-// Initial load
+// Auto-Refresh
 loadMatrix();
 setInterval(loadMatrix, 5000);

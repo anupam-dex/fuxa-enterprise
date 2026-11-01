@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FUXA Fleet Manager | SCADA Orchestrator</title>
-    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="/static/styles.css?v=2">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -21,28 +21,86 @@
         <div class="header-stats">
             <div class="stat-pill">
                 <span class="dot live"></span>
-                <span>OPC-UA Bridge: <strong>opc.tcp://127.0.0.1:4840</strong></span>
+                <span>OPC-UA Bridge: <strong>opc.tcp://0.0.0.0:4845</strong></span>
             </div>
             <div class="stat-pill">
-                <span>Active Plants: <strong id="stat-plants">5</strong></span>
+                <span class="dot live"></span>
+                <span>OT Gateway: <strong>Port 80</strong></span>
+            </div>
+            <div class="stat-pill">
+                <span>View Servers: <strong id="stat-views-total">0</strong></span>
             </div>
             <button class="btn btn-primary" onclick="openCreateModal()">+ Create New Project</button>
         </div>
     </header>
 
     <main class="container">
-        <!-- Visual Matrix Section -->
-        <section class="section-card">
-            <div class="section-header">
-                <h2>Visual Port & Plant Topology</h2>
-                <div class="legend">
-                    <span class="legend-item"><span class="badge badge-storage">STORAGE (PLCs)</span> Master Collector</span>
-                    <span class="legend-item"><span class="badge badge-view">VIEW (HMI)</span> OPC-UA Consumer</span>
+        <!-- 1. Live Architecture Data Flow Pipeline -->
+        <section class="topology-banner">
+            <div class="pipe-step">
+                <div class="pipe-step-header">
+                    <span class="pipe-tag storage">1. Plant Storage</span>
+                    <span class="dot live"></span>
+                </div>
+                <div class="pipe-title">5 InfluxDB Collectors</div>
+                <div class="pipe-desc">Ports :5100, :5200, :5300...</div>
+            </div>
+
+            <div class="pipe-step">
+                <div class="pipe-step-header">
+                    <span class="pipe-tag bridge">2. Unified Bridge</span>
+                    <span class="dot live"></span>
+                </div>
+                <div class="pipe-title">Central OPC-UA Core</div>
+                <div class="pipe-desc">:4845/fuxa/server/</div>
+            </div>
+
+            <div class="pipe-step">
+                <div class="pipe-step-header">
+                    <span class="pipe-tag view">3. HMI View Servers</span>
+                    <span class="dot live"></span>
+                </div>
+                <div class="pipe-title" id="pipe-active-count">0 Deployed Lines</div>
+                <div class="pipe-desc">Single Engine &bull; Isolated DBs</div>
+            </div>
+
+            <div class="pipe-step">
+                <div class="pipe-step-header">
+                    <span class="pipe-tag gateway">4. OT Reverse Proxy</span>
+                    <span class="dot live"></span>
+                </div>
+                <div class="pipe-title">Port 80 Gateway</div>
+                <div class="pipe-desc">Zero OT Firewall Restriction</div>
+            </div>
+        </section>
+
+        <!-- 2. Compact Plant Topology Strip (Interactive Selector) -->
+        <section>
+            <div class="plants-section-header">
+                <h2>Plant Topology Nodes</h2>
+                <span style="font-size: 0.8rem; color: var(--text-muted);">Click a plant to filter deployed view servers</span>
+            </div>
+            <div id="plant-strip" class="plant-strip-grid">
+                <!-- Populated dynamically -->
+            </div>
+        </section>
+
+        <!-- 3. Full-Width Topological View Servers Hub -->
+        <section class="views-section">
+            <div class="views-toolbar">
+                <div class="filter-pills" id="filter-pills-bar">
+                    <button class="filter-pill active" onclick="setPlantFilter('all')">All Plants</button>
+                    <!-- Plant filter pills added dynamically -->
+                </div>
+                <div class="search-box">
+                    <span>🔍</span>
+                    <input type="text" id="filter-search" placeholder="Filter by name, port, subpath..." oninput="handleSearchInput()">
                 </div>
             </div>
 
-            <div id="plant-grid" class="plant-grid">
-                <!-- Dynamically populated plant cards -->
+            <!-- View Instances Grid / Rows -->
+            <div id="instances-list" class="instances-grid">
+                <!-- Dynamically rendered instance rows -->
             </div>
         </section>
     </main>
@@ -110,7 +168,7 @@
                     <div class="port-result">
                         <span>Assigned Port:</span>
                         <input type="number" id="input-custom-port" value="9610" min="1024" max="65535"
-                               style="width: 100px; text-align: center; font-weight: bold; font-family: monospace; font-size: 1.1rem; background: #0f172a; color: #38bdf8; border: 1px solid #0284c7; border-radius: 4px; padding: 4px;"
+                               style="width: 100px; text-align: center; font-weight: bold; font-family: monospace; font-size: 1.1rem; background: #0d121c; color: #38bdf8; border: 1px solid #0284c7; border-radius: 4px; padding: 4px;"
                                title="Auto-calculated from formula, or enter custom port number (e.g. 9621, 9622)">
                     </div>
                 </div>
@@ -129,23 +187,7 @@
         </div>
     </div>
 
-    <!-- Live Logs & Alarms Modal -->
-    <div id="logs-modal" class="modal-backdrop">
-        <div class="modal-box" style="max-width: 900px; width: 90%;">
-            <div class="modal-header">
-                <h3 id="logs-title">Live Logs & Alarms</h3>
-                <button class="btn-close" onclick="closeLogsModal()">&times;</button>
-            </div>
-            <div class="modal-body" style="padding: 10px 24px;">
-                <pre id="logs-content" style="background: #0f172a; color: #38bdf8; padding: 15px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; max-height: 450px; overflow-y: auto; white-space: pre-wrap; line-height: 1.4; border: 1px solid #334155;"></pre>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeLogsModal()">Close</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Edit Instance Modal -->
+    <!-- Edit View Server Modal -->
     <div id="edit-modal" class="modal-backdrop">
         <div class="modal-box">
             <div class="modal-header">
@@ -206,7 +248,7 @@
                     <div class="port-result">
                         <span>Server Port:</span>
                         <input type="number" id="edit-input-port" value="9610" min="1024" max="65535"
-                               style="width: 100px; text-align: center; font-weight: bold; font-family: monospace; font-size: 1.1rem; background: #0f172a; color: #38bdf8; border: 1px solid #334155; border-radius: 4px; padding: 4px;"
+                               style="width: 100px; text-align: center; font-weight: bold; font-family: monospace; font-size: 1.1rem; background: #0d121c; color: #38bdf8; border: 1px solid #334155; border-radius: 4px; padding: 4px;"
                                title="Port number for this view server">
                     </div>
                 </div>
@@ -218,6 +260,22 @@
         </div>
     </div>
 
-    <script src="/static/app.js"></script>
+    <!-- Live Logs & Alarms Modal -->
+    <div id="logs-modal" class="modal-backdrop">
+        <div class="modal-box" style="max-width: 900px; width: 90%;">
+            <div class="modal-header">
+                <h3 id="logs-title">Live Logs & Alarms</h3>
+                <button class="btn-close" onclick="closeLogsModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 10px 24px;">
+                <pre id="logs-content" style="background: #0d121c; color: #38bdf8; padding: 15px; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; max-height: 450px; overflow-y: auto; white-space: pre-wrap; line-height: 1.4; border: 1px solid #242e3f;"></pre>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeLogsModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js?v=3"></script>
 </body>
 </html>
