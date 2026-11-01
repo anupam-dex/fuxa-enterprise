@@ -96,9 +96,25 @@
         return '';
     }
 
+    // Remove any legacy/stale Page URL button from the main header toolbar
+    function removeHeaderPageUrlButton() {
+        const btns = document.querySelectorAll('button, a, div');
+        btns.forEach(btn => {
+            if (btn.id === 'fuxa-header-page-url-btn' || 
+                (btn.textContent && btn.textContent.trim().includes('Page URL') && !btn.closest('.custom-url-setting-field'))) {
+                if (btn.closest('app-header') || btn.closest('.header-left') || btn.closest('.header-right') || btn.closest('.my-toolbar') || btn.parentNode === document.querySelector('.header-left')) {
+                    console.log('[FUXA] Removed legacy header Page URL button from header toolbar.');
+                    btn.remove();
+                }
+            }
+        });
+    }
+
     // Observe Settings Dialog (⚙️) to inject Custom Subpath & Page URLs card
     function observeSettingsDialog() {
+        removeHeaderPageUrlButton();
         const observer = new MutationObserver(() => {
+            removeHeaderPageUrlButton();
             const dialog = document.querySelector('app-app-settings, .mat-mdc-dialog-container');
             if (dialog && !dialog.querySelector('.custom-url-setting-field')) {
                 const portInput = dialog.querySelector('input[numberonly], input[disabled]');
