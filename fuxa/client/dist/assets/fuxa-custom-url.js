@@ -49,9 +49,16 @@
     }
 
     function ensureTvsHeaderLogo() {
-        // 1. Editor / Device / Settings top header bar
-        const headerPanel = document.querySelector('app-header .header-panel, .header-panel');
-        if (headerPanel && !document.getElementById('fuxa-header-tvs-logo')) {
+        // Clean up any stray logo or badge mistakenly injected outside app-header
+        document.querySelectorAll('#fuxa-header-tvs-logo, #fuxa-header-project-badge').forEach(el => {
+            if (!el.closest('app-header')) {
+                el.remove();
+            }
+        });
+
+        // 1. Editor / Device / Settings top header bar (strictly scoped to app-header)
+        const headerPanel = document.querySelector('app-header .header-panel');
+        if (headerPanel && !headerPanel.querySelector('#fuxa-header-tvs-logo')) {
             const tvsLogo = document.createElement('div');
             tvsLogo.id = 'fuxa-header-tvs-logo';
             tvsLogo.style.cssText = 'display: inline-flex; align-items: center; margin-right: 14px; margin-left: 8px; height: 32px; cursor: default; user-select: none; -webkit-user-select: none;';
@@ -123,9 +130,9 @@
         ensureTvsHeaderLogo();
         if (!name) return;
         document.title = `${name} - TVS SCADA`;
-        const headerPanel = document.querySelector('app-header .header-panel, .header-panel');
+        const headerPanel = document.querySelector('app-header .header-panel');
         if (headerPanel) {
-            let badge = document.getElementById('fuxa-header-project-badge');
+            let badge = headerPanel.querySelector('#fuxa-header-project-badge');
             if (!badge) {
                 badge = document.createElement('div');
                 badge.id = 'fuxa-header-project-badge';

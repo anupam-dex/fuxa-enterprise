@@ -224,6 +224,14 @@ const server = http.createServer((req, res) => {
 
     const proxyReq = http.request(options, (proxyRes) => {
         const isHtml = (proxyRes.headers['content-type'] || '').includes('text/html');
+        const newHeaders = { ...proxyRes.headers };
+
+        // Rewrite redirect Location header so subpath prefix is preserved
+        if (target.prefix && newHeaders['location'] && newHeaders['location'].startsWith('/')) {
+            if (!newHeaders['location'].startsWith(target.prefix)) {
+                newHeaders['location'] = target.prefix + newHeaders['location'];
+            }
+        }
 
         if (isHtml && target.prefix) {
             // Buffer HTML and rewrite <base href> dynamically to current custom subpath
@@ -240,7 +248,6 @@ const server = http.createServer((req, res) => {
                 html = html.replace(/window\.__BASE_PATH__\s*=\s*[^;]+/g, `window.__BASE_PATH__ = "${target.prefix}"`);
 
                 const modifiedBuf = Buffer.from(html, 'utf8');
-                const newHeaders = { ...proxyRes.headers };
                 newHeaders['content-length'] = modifiedBuf.length;
                 delete newHeaders['etag']; // invalidate stale etag
 
@@ -249,7 +256,7 @@ const server = http.createServer((req, res) => {
             });
         } else {
             // Stream binary, assets, API responses directly
-            res.writeHead(proxyRes.statusCode, proxyRes.headers);
+            res.writeHead(proxyRes.statusCode, newHeaders);
             proxyRes.pipe(res, { end: true });
         }
     });

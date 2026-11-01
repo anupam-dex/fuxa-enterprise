@@ -43,33 +43,27 @@ export class HeaderComponent implements AfterViewInit, OnDestroy {
                 private themeService: ThemeService,
                 private projectService: ProjectService
     ) {
+        // Evaluate route state immediately for direct page loads / refreshes
+        this.updateRoutesState(this.router.url);
+
         this.router.events.pipe(
             filter(val => val instanceof NavigationEnd),
         ).subscribe((routeKey: NavigationEnd) => {
-            const urlWithoutParams = routeKey.url.split('?')[0];
-            this.editorMode = editorModeRouteKey.includes(urlWithoutParams) ? true : false;
-            this.saveFromEditor = saveFromEditorRouteKey.includes(urlWithoutParams) ? true : false;
-            if (this.router.url.indexOf(DEVICE_READONLY) >= 0) {
-                this.editorMode = false;
-            }
+            this.updateRoutesState(routeKey.url);
         });
 
-        // this.router.events.subscribe(()=> {
-        //     this.editorMode = (this.router.url.indexOf('editor') >= 0 ||  this.router.url.indexOf('device') >= 0 ||
-        //                         this.router.url.indexOf('users') >= 0 || this.router.url.indexOf('text') >= 0 ||
-        //                         this.router.url.indexOf('messages') >= 0 || this.router.url.indexOf('events') >= 0 ||
-        //                         this.router.url.indexOf('notifications') >= 0 || this.router.url.indexOf('scripts') >= 0 ||
-        //                         this.router.url.indexOf('reports') >= 0) ? true : false;
-        //     this.savededitor = (this.router.url.indexOf('device') >= 0 || this.router.url.indexOf('users') >= 0 ||
-        //                         this.router.url.indexOf('text') >= 0 || this.router.url.indexOf('messages') >= 0 ||
-        //                         this.router.url.indexOf('events') >= 0 || this.router.url.indexOf('notifications') >= 0 ||
-        //                         this.router.url.indexOf('scripts') >= 0 || this.router.url.indexOf('reports') >= 0) ? true : false;
-
-        //     if (this.router.url.indexOf(DEVICE_READONLY) >= 0) {
-        //         this.editorMode = false;
-        //     }
-        // });
         this.themeService.setTheme(this.projectService.getLayoutTheme());
+    }
+
+    private updateRoutesState(rawUrl?: string) {
+        const urlToParse = (rawUrl || this.router.url || (typeof window !== 'undefined' ? window.location.pathname : '') || '').split('?')[0];
+        const isEditor = editorModeRouteKey.some(key => urlToParse === key || urlToParse.endsWith(key) || urlToParse.includes(key));
+        const isSaveFromEditor = saveFromEditorRouteKey.some(key => urlToParse === key || urlToParse.endsWith(key) || urlToParse.includes(key));
+        this.editorMode = isEditor;
+        this.saveFromEditor = isSaveFromEditor;
+        if (urlToParse.indexOf(DEVICE_READONLY) >= 0) {
+            this.editorMode = false;
+        }
     }
 
     ngAfterViewInit() {

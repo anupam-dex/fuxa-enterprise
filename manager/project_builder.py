@@ -220,7 +220,7 @@ def generate_fuxa_database(
     cur.execute("CREATE TABLE IF NOT EXISTS arMarkers (name TEXT PRIMARY KEY, value TEXT);")
 
     # 1. General settings, version & explicit Project Name
-    cur.execute("INSERT OR REPLACE INTO general (name, value) VALUES (?, ?);", ("version", "1.00"))
+    cur.execute("INSERT OR REPLACE INTO general (name, value) VALUES (?, ?);", ("version", json.dumps("1.01")))
     cur.execute("INSERT OR REPLACE INTO general (name, value) VALUES (?, ?);", ("name", json.dumps(headline_text)))
     
     # Required FuxaServer device (id: '0')
@@ -401,6 +401,50 @@ def sync_tags_to_view_database(target_dir: str, plant_id: int, base_dir: str = N
             "INSERT OR REPLACE INTO devices (name, value, connection, cntid, cntpwd) VALUES (?, ?, ?, ?, ?);",
             (device_id, json.dumps(dev_obj), "opc-ua", "", "")
         )
+
+    # Database integrity & self-healing
+    try:
+        # Ensure 'version' in general table is valid JSON
+        cur.execute("SELECT value FROM general WHERE name = 'version';")
+        vrow = cur.fetchone()
+        if vrow:
+            try:
+                json.loads(vrow[0])
+            except Exception:
+                cur.execute("UPDATE general SET value = ? WHERE name = 'version';", (json.dumps("1.01"),))
+        else:
+            cur.execute("INSERT OR REPLACE INTO general (name, value) VALUES (?, ?);", ("version", json.dumps("1.01")))
+
+        # Ensure 'views' table has at least one valid view
+        cur.execute("SELECT count(*) FROM views;")
+        vcnt = cur.fetchone()[0]
+        if vcnt == 0:
+            view_id = "view_overview"
+            view_obj = {
+                "id": view_id,
+                "name": "Overview",
+                "profile": {
+                    "width": 1920,
+                    "height": 1080,
+                    "bkcolor": "#0f172a",
+                    "margin": 10
+                },
+                "items": {},
+                "svgcontent": (
+                    '<svg width="1920" height="1080" xmlns="http://www.w3.org/2000/svg">'
+                    '<g><title>Overview Layer</title>'
+                    '<rect width="1920" height="1080" fill="#0f172a"/>'
+                    '<rect x="20" y="20" width="1880" height="88" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>'
+                    f'<g id="tvs_logo_emblem" transform="translate(42, 46)"><svg width="180" height="36" viewBox="0.5 0 146.7 26.44">{TVS_SVG_PATHS_WHITE}</svg></g>'
+                    '<line x1="245" y1="36" x2="245" y2="92" stroke="#475569" stroke-width="1.5"/>'
+                    f'<text fill="#ffffff" font-size="24" font-family="system-ui, sans-serif" font-weight="700" x="265" y="60">Plant {plant_id} SCADA Monitoring Dashboard</text>'
+                    f'<text fill="#10b981" font-size="13" font-family="system-ui, sans-serif" font-weight="600" x="265" y="84">🟢 Central Storage Bridge Active (:4845) &bull; {len(storage_tags)} Storage Tags Ingested</text>'
+                    '</g></svg>'
+                )
+            }
+            cur.execute("INSERT OR REPLACE INTO views (name, value) VALUES (?, ?);", (view_id, json.dumps(view_obj)))
+    except Exception as e:
+        print(f"Warning during DB integrity check: {e}")
 
     conn.commit()
     conn.close()
