@@ -49,7 +49,7 @@ export class ViewPropertyComponent implements OnInit, OnDestroy {
         const viewName = this.data.name || this.formGroup?.controls?.name?.value || '';
         const origin = window.location.origin;
         const basePath = window.location.pathname.replace(/\/editor.*$/, '').replace(/\/+$/, '');
-        return `${origin}${basePath}/home/${encodeURIComponent(viewName)}`;
+        return `${origin}${basePath}/home?viewName=${encodeURIComponent(viewName)}`;
     }
 
     copyPageUrl() {

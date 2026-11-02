@@ -27,6 +27,18 @@
         }
     } catch (e) {}
 
+    // Ensure direct navigation to /home/:viewName normalizes to /home?viewName=... for 100% universal compatibility
+    try {
+        const pName = window.location.pathname;
+        const viewMatch = pName.match(/^(.*\/home)\/([^/?#]+)$/);
+        if (viewMatch && !window.location.search.includes('viewName=')) {
+            const homeBase = viewMatch[1];
+            const targetView = decodeURIComponent(viewMatch[2]);
+            const newUrl = homeBase + '?viewName=' + encodeURIComponent(targetView) + (window.location.hash || '');
+            window.location.replace(newUrl);
+        }
+    } catch (e) {}
+
     let liveProjectName = localStorage.getItem('fuxa_project_name') || '';
     let isMutating = false;
 
@@ -1472,7 +1484,7 @@
 
         const hostUrl = getHostUrl();
         const currentSubpath = getBasePath();
-        const fullViewUrl = viewName ? `${hostUrl}${currentSubpath}/home/${encodeURIComponent(viewName)}` : `${hostUrl}${currentSubpath}/home`;
+        const fullViewUrl = viewName ? `${hostUrl}${currentSubpath}/home?viewName=${encodeURIComponent(viewName)}` : `${hostUrl}${currentSubpath}/home`;
 
         const urlDiv = document.createElement('div');
         urlDiv.className = 'my-form-field block mt10 fuxa-view-url-field';
@@ -1499,6 +1511,15 @@
         const copyBtn = urlDiv.querySelector('#fuxa-btn-copy-specific-view');
         const inputEl = urlDiv.querySelector('#fuxa-specific-view-url-text');
         const openLink = urlDiv.querySelector('#fuxa-link-open-specific-view');
+
+        if (nameInput) {
+            nameInput.addEventListener('input', () => {
+                const updatedName = nameInput.value.trim();
+                const updatedUrl = updatedName ? `${hostUrl}${currentSubpath}/home?viewName=${encodeURIComponent(updatedName)}` : `${hostUrl}${currentSubpath}/home`;
+                if (inputEl) inputEl.value = updatedUrl;
+                if (openLink) openLink.href = updatedUrl;
+            });
+        }
 
         if (copyBtn && inputEl) {
             ['mousedown', 'pointerdown', 'click'].forEach(evt => {
