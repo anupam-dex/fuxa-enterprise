@@ -274,16 +274,16 @@ if (settings.https) {
 }
 server.setMaxListeners(0);
 
-const ioSocketPath = (BASE_PATH || '') + '/socket.io';
+const ioSocketPath = '/socket.io';
 
-// Normalize incoming Socket.IO requests & WebSocket upgrades to match configured path,
+// Normalize incoming Socket.IO requests & WebSocket upgrades to match standard '/socket.io',
 // ensuring reverse proxies (OT Gateway, Nginx) connect seamlessly whether they rewrite/strip subpaths or not.
 const normalizeSocketIoUrl = (req) => {
     if (!req || !req.url) return;
     const socketIoIndex = req.url.indexOf('/socket.io');
     if (socketIoIndex !== -1) {
         const queryAndRest = req.url.slice(socketIoIndex + '/socket.io'.length);
-        req.url = ((BASE_PATH || '') + '/socket.io') + queryAndRest;
+        req.url = '/socket.io' + queryAndRest;
     }
 };
 

@@ -318,7 +318,18 @@ const server = http.createServer((req, res) => {
 
 // Handle WebSocket / Socket.IO Upgrades
 server.on('upgrade', (req, socket, head) => {
-    const target = findTarget(req.url);
+    let target = findTarget(req.url);
+
+    // Fallback: Infer target instance from Referer for un-prefixed WebSocket requests
+    if (!target && req.headers['referer']) {
+        try {
+            const refUrl = new URL(req.headers['referer']);
+            const refTarget = findTarget(refUrl.pathname);
+            if (refTarget) {
+                target = refTarget;
+            }
+        } catch (e) {}
+    }
 
     if (!target) {
         socket.destroy();
