@@ -47,21 +47,20 @@
                     pointer-events: none !important;
                 }
 
-                /* Expand View Properties dialog to fit width naturally */
-                app-view-property .property-container,
-                app-view-property .mat-tab-container,
-                app-view-property form.container,
-                .cdk-overlay-pane app-view-property .property-container,
-                .mat-mdc-dialog-container app-view-property .property-container,
-                .cdk-overlay-pane:has(app-view-property) .property-container,
-                .mat-mdc-dialog-container:has(app-view-property) .property-container {
-                    width: 100% !important;
-                    max-width: 680px !important;
+                /* View Properties dialog restored to normal 760px width */
+                .cdk-overlay-pane:has(app-view-property),
+                .mat-mdc-dialog-container:has(app-view-property),
+                app-view-property,
+                app-view-property .container,
+                app-view-property form.container {
+                    width: 760px !important;
+                    max-width: 95vw !important;
                     box-sizing: border-box !important;
                 }
-                app-view-property .container {
+                app-view-property .property-container,
+                app-view-property .mat-tab-container {
                     width: 100% !important;
-                    max-width: 760px !important;
+                    max-width: 100% !important;
                     box-sizing: border-box !important;
                 }
                 app-view-property .my-form-field.block,
@@ -1424,6 +1423,120 @@
         }
     }
 
+    function enforceViewPropertyLayout() {
+        const viewProp = document.querySelector('app-view-property');
+        if (!viewProp) return;
+
+        // Restore View Properties dialog & overlay to normal 760px width
+        const overlayPane = viewProp.closest('.cdk-overlay-pane');
+        if (overlayPane) {
+            overlayPane.style.setProperty('width', '760px', 'important');
+            overlayPane.style.setProperty('max-width', '95vw', 'important');
+        }
+        const matDialogContainer = viewProp.closest('.mat-mdc-dialog-container, mat-dialog-container');
+        if (matDialogContainer) {
+            matDialogContainer.style.setProperty('width', '760px', 'important');
+            matDialogContainer.style.setProperty('max-width', '95vw', 'important');
+        }
+
+        viewProp.style.setProperty('display', 'block', 'important');
+        viewProp.style.setProperty('width', '760px', 'important');
+        viewProp.style.setProperty('max-width', '95vw', 'important');
+        viewProp.style.setProperty('box-sizing', 'border-box', 'important');
+
+        const container = viewProp.querySelector('.container, form.container');
+        if (container) {
+            container.style.setProperty('width', '760px', 'important');
+            container.style.setProperty('max-width', '100%', 'important');
+            container.style.setProperty('box-sizing', 'border-box', 'important');
+        }
+
+        const propContainers = viewProp.querySelectorAll('.property-container, .mat-tab-container');
+        propContainers.forEach(el => {
+            el.style.setProperty('width', '100%', 'important');
+            el.style.setProperty('max-width', '100%', 'important');
+            el.style.setProperty('box-sizing', 'border-box', 'important');
+        });
+
+        injectSpecificViewUrl(viewProp);
+    }
+
+    function injectSpecificViewUrl(viewProp) {
+        if (!viewProp || viewProp.querySelector('.fuxa-view-url-field')) return;
+
+        const nameField = viewProp.querySelector('.property-container .my-form-field.block');
+        if (!nameField) return;
+
+        const nameInput = nameField.querySelector('input');
+        const viewName = (nameInput && nameInput.value.trim()) || getCurrentViewName() || 'MainView';
+
+        const hostUrl = getHostUrl();
+        const currentSubpath = getBasePath();
+        const fullViewUrl = viewName ? `${hostUrl}${currentSubpath}/home/${encodeURIComponent(viewName)}` : `${hostUrl}${currentSubpath}/home`;
+
+        const urlDiv = document.createElement('div');
+        urlDiv.className = 'my-form-field block mt10 fuxa-view-url-field';
+        urlDiv.style.cssText = 'width: 100%; box-sizing: border-box; display: block; margin-top: 10px; margin-bottom: 10px;';
+
+        urlDiv.innerHTML = `
+            <span style="display: block; margin-bottom: 4px; font-weight: 500; font-size: 13px;">View URL (OT Compliant)</span>
+            <div style="display: flex; gap: 8px; align-items: center; width: 100%; box-sizing: border-box;">
+                <input id="fuxa-specific-view-url-text" readonly type="text" value="${fullViewUrl}" 
+                       style="flex: 1 1 auto; min-width: 0; width: 100%; height: 32px; padding: 4px 10px; font-size: 12px; font-family: monospace; border: 1px solid rgba(128,128,128,0.3); border-radius: 4px; background-color: var(--formInputBackground, rgba(255,255,255,0.06)); color: var(--formInputColor, inherit); opacity: 0.9; box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important; cursor: text !important;" />
+                <button id="fuxa-btn-copy-specific-view" type="button" 
+                        style="flex-shrink: 0; white-space: nowrap; height: 32px; padding: 0 14px; font-size: 12px; font-weight: 600; border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 4px; background: rgba(255, 255, 255, 0.08); color: #ffffff; cursor: pointer; transition: background 0.2s;">
+                    Copy URL
+                </button>
+                <a id="fuxa-link-open-specific-view" href="${fullViewUrl}" target="_blank" 
+                   style="flex-shrink: 0; white-space: nowrap; height: 32px; padding: 0 14px; font-size: 12px; font-weight: 600; border: 1px solid rgba(128, 128, 128, 0.4); border-radius: 4px; background: rgba(255, 255, 255, 0.08); color: #ffffff; text-decoration: none; cursor: pointer; display: inline-flex; align-items: center; box-sizing: border-box;">
+                    Open ↗
+                </a>
+            </div>
+        `;
+
+        nameField.parentNode.insertBefore(urlDiv, nameField.nextSibling);
+
+        const copyBtn = urlDiv.querySelector('#fuxa-btn-copy-specific-view');
+        const inputEl = urlDiv.querySelector('#fuxa-specific-view-url-text');
+        const openLink = urlDiv.querySelector('#fuxa-link-open-specific-view');
+
+        if (copyBtn && inputEl) {
+            ['mousedown', 'pointerdown', 'click'].forEach(evt => {
+                copyBtn.addEventListener(evt, (e) => e.stopPropagation(), true);
+                if (openLink) openLink.addEventListener(evt, (e) => e.stopPropagation(), true);
+            });
+
+            copyBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(inputEl.value);
+                } else {
+                    inputEl.select();
+                    document.execCommand('copy');
+                }
+                const origText = copyBtn.textContent;
+                copyBtn.textContent = 'Copied! ✓';
+                copyBtn.style.borderColor = '#16a34a';
+                copyBtn.style.color = '#4ade80';
+                setTimeout(() => {
+                    copyBtn.textContent = origText;
+                    copyBtn.style.borderColor = 'rgba(128, 128, 128, 0.4)';
+                    copyBtn.style.color = '#ffffff';
+                }, 2000);
+            });
+        }
+
+        if (nameInput) {
+            nameInput.addEventListener('input', () => {
+                const currentName = nameInput.value.trim() || 'MainView';
+                const updatedUrl = `${hostUrl}${currentSubpath}/home/${encodeURIComponent(currentName)}`;
+                if (inputEl) inputEl.value = updatedUrl;
+                if (openLink) openLink.href = updatedUrl;
+            });
+        }
+    }
+
     function ensureAboutDialogCustomization() {
         const infoDialog = document.querySelector('dialog-info, .cdk-overlay-pane:has(dialog-info)');
         if (!infoDialog) return;
@@ -1457,6 +1570,7 @@
             isMutating = true;
             try {
                 enforceViewServerRestrictions();
+                enforceViewPropertyLayout();
                 injectAppSettingsCard();
                 injectLayoutHeadlineField();
                 ensureAboutDialogCustomization();
@@ -1542,6 +1656,7 @@
         ensureHeaderLiveDateTime();
         ensureAboutDialogCustomization();
         enforceViewServerRestrictions();
+        enforceViewPropertyLayout();
         fetchLiveProjectName();
         observeSettingsDialog();
 
@@ -1576,6 +1691,7 @@
         ensureHeaderLiveDateTime();
         ensureAboutDialogCustomization();
         enforceViewServerRestrictions();
+        enforceViewPropertyLayout();
     }, 800);
 
 })();
