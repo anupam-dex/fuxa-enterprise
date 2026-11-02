@@ -1537,6 +1537,53 @@
         }
     }
 
+    function ensureEditorToolIcons() {
+        if (document.getElementById('fuxa-editor-tool-icons-fix')) return;
+
+        const basePath = getBasePath().replace(/\/+$/, '');
+        const style = document.createElement('style');
+        style.id = 'fuxa-editor-tool-icons-fix';
+        style.textContent = `
+            /* Fix FUXA Editor Tool Icons under General & Controls for subpath reverse proxy */
+            .icon-select { background: url("${basePath}/assets/images/select-pointer.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-pencil { background: url("${basePath}/assets/images/pencil.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-line { background: url("${basePath}/assets/images/line.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-rect { background: url("${basePath}/assets/images/rect.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-circle { background: url("${basePath}/assets/images/circle.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-ellipse { background: url("${basePath}/assets/images/ellipse.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-path { background: url("${basePath}/assets/images/path.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-text { background: url("${basePath}/assets/images/text.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-image { background: url("${basePath}/assets/images/image.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+
+            .icon-switch { background: url("${basePath}/assets/images/switch.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-value { background: url("${basePath}/assets/images/value.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-editvalue { background: url("${basePath}/assets/images/editvalue.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-selectvalue { background: url("${basePath}/assets/images/selectvalue.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-progress-v { background: url("${basePath}/assets/images/progress-v.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-semaphore { background: url("${basePath}/assets/images/semaphore.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-button { background: url("${basePath}/assets/images/button.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-chart { background: url("${basePath}/assets/images/chart.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-bag { background: url("${basePath}/assets/images/bag.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-pipe { background: url("${basePath}/assets/images/pipe.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-slider { background: url("${basePath}/assets/images/slider.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-graphbar { background: url("${basePath}/assets/images/graphbar.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-table { background: url("${basePath}/assets/images/table.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-iframe { background: url("${basePath}/assets/images/iframe.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+
+            .icon-group { background: url("${basePath}/assets/images/group.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-ungroup { background: url("${basePath}/assets/images/ungroup.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-align-left { background: url("${basePath}/assets/images/align-left.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-align-center { background: url("${basePath}/assets/images/align-center.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-align-right { background: url("${basePath}/assets/images/align-right.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-align-top { background: url("${basePath}/assets/images/align-top.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-align-middle { background: url("${basePath}/assets/images/align-middle.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-align-bottom { background: url("${basePath}/assets/images/align-bottom.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-flip-orizontal { background: url("${basePath}/assets/images/flip-orizontal.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+            .icon-flip-vertical { background: url("${basePath}/assets/images/flip-vertical.svg") no-repeat center center !important; background-size: contain !important; width: 30px !important; height: 30px !important; display: inline-block !important; }
+        `;
+        (document.head || document.documentElement).appendChild(style);
+    }
+
     function ensureAboutDialogCustomization() {
         const infoDialog = document.querySelector('dialog-info, .cdk-overlay-pane:has(dialog-info)');
         if (!infoDialog) return;
@@ -1657,6 +1704,8 @@
         ensureAboutDialogCustomization();
         enforceViewServerRestrictions();
         enforceViewPropertyLayout();
+        ensureEditorToolIcons();
+        ensureEditorToolIcons();
         fetchLiveProjectName();
         observeSettingsDialog();
 
@@ -1692,6 +1741,7 @@
         ensureAboutDialogCustomization();
         enforceViewServerRestrictions();
         enforceViewPropertyLayout();
+        ensureEditorToolIcons();
 
         // Prevent FUXA core socket reconnect from auto-reloading while modal dialogs are open
         if (document.querySelector('.cdk-overlay-pane, mat-dialog-container, app-view-property, app-app-settings')) {

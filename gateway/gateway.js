@@ -17,6 +17,7 @@ const GATEWAY_PORT = parseInt(process.env.GATEWAY_PORT || '80', 10);
 const REGISTRY_PATH = path.resolve(__dirname, '../manager/registry.json');
 const PERSISTENT_REGISTRY = path.resolve(__dirname, '../instances/registry.json');
 const FLEET_MANAGER_PORT = parseInt(process.env.FLEET_MANAGER_PORT || '9000', 10);
+const CLIENT_DIST_DIR = path.resolve(__dirname, '../fuxa/client/dist');
 
 let routingTable = {}; // subpath -> { port, plant, name }
 
@@ -186,7 +187,53 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    const target = findTarget(req.url);
+    const parsedReqUrl = url.parse(req.url);
+    const pathname = parsedReqUrl.pathname || '/';
+
+    // 2. Direct Assets Handler (serves editor tool icons, libraries & fonts requested at root /assets/...)
+    if (pathname.startsWith('/assets/')) {
+        const filePath = path.join(CLIENT_DIST_DIR, pathname);
+        if (filePath.startsWith(CLIENT_DIST_DIR) && fs.existsSync(filePath)) {
+            try {
+                if (fs.statSync(filePath).isFile()) {
+                    const ext = path.extname(filePath).toLowerCase();
+                    const mimeTypes = {
+                        '.svg': 'image/svg+xml',
+                        '.png': 'image/png',
+                        '.jpg': 'image/jpeg',
+                        '.jpeg': 'image/jpeg',
+                        '.gif': 'image/gif',
+                        '.ico': 'image/x-icon',
+                        '.js': 'application/javascript',
+                        '.css': 'text/css',
+                        '.json': 'application/json',
+                        '.woff': 'font/woff',
+                        '.woff2': 'font/woff2',
+                        '.ttf': 'font/ttf'
+                    };
+                    res.writeHead(200, {
+                        'Content-Type': mimeTypes[ext] || 'application/octet-stream',
+                        'Cache-Control': 'public, max-age=86400',
+                        'Access-Control-Allow-Origin': '*'
+                    });
+                    return fs.createReadStream(filePath).pipe(res);
+                }
+            } catch (e) {}
+        }
+    }
+
+    let target = findTarget(req.url);
+
+    // Fallback: Infer target instance from Referer for un-prefixed requests (e.g. /_images/ or local assets)
+    if (!target && req.headers['referer']) {
+        try {
+            const refUrl = new URL(req.headers['referer']);
+            const refTarget = findTarget(refUrl.pathname);
+            if (refTarget) {
+                target = refTarget;
+            }
+        } catch (e) {}
+    }
 
     if (!target) {
         res.writeHead(404, { 'Content-Type': 'text/html' });
