@@ -121,7 +121,7 @@ const server = http.createServer((req, res) => {
                 // Update in-memory routing table immediately
                 routingTable[newSubpath] = {
                     port: targetPort,
-                    name: `Instance ${targetPort}`,
+                    name: data.name || `Instance ${targetPort}`,
                     plant: 9
                 };
 

@@ -1220,6 +1220,10 @@
                 <div style="display: flex; gap: 8px; align-items: center; width: 320px; box-sizing: border-box;">
                     <input id="fuxa-project-name-input" type="text" value="${currentProjectName}" placeholder="e.g. Plant 9 Paintshop" 
                            style="flex: 1 1 auto; min-width: 0; width: 100%; height: 32px; padding: 4px 10px; font-size: 13px; font-family: inherit; border: none; border-radius: 4px; background-color: var(--formInputBackground, rgba(255,255,255,0.06)); color: var(--formInputColor, inherit); box-sizing: border-box; outline: none; user-select: text !important; -webkit-user-select: text !important; cursor: text !important;" />
+                    <button id="fuxa-project-name-save-btn" type="button" 
+                            style="flex-shrink: 0; white-space: nowrap; height: 32px; padding: 0 16px; font-size: 12px; font-weight: 600; border: none; border-radius: 4px; background: #3f51b5; color: #fff; cursor: pointer; transition: background 0.2s;">
+                        Apply
+                    </button>
                 </div>
             </div>
 
@@ -1271,6 +1275,7 @@
 
         // Attach event listeners
         const saveBtn = customDiv.querySelector('#fuxa-subpath-save-btn');
+        const nameSaveBtn = customDiv.querySelector('#fuxa-project-name-save-btn');
         const input = customDiv.querySelector('#fuxa-subpath-input');
         const nameInput = customDiv.querySelector('#fuxa-project-name-input');
         const viewInput = customDiv.querySelector('#fuxa-view-url-text');
@@ -1278,6 +1283,17 @@
         const openLink = customDiv.querySelector('#fuxa-link-open-view');
         const copyViewBtn = customDiv.querySelector('#fuxa-btn-copy-view');
         const copyEditorBtn = customDiv.querySelector('#fuxa-btn-copy-editor');
+
+        // Dynamically fetch actual live project name from backend
+        try {
+            fetch('api/project-name').then(r => r.ok ? r.json() : null).then(data => {
+                if (data && data.name && nameInput) {
+                    nameInput.value = data.name;
+                    liveProjectName = data.name;
+                    updateHeaderBadge(data.name);
+                }
+            }).catch(() => {});
+        } catch (e) {}
 
         ['keydown', 'keyup', 'keypress', 'input', 'mousedown', 'pointerdown'].forEach(evt => {
             input.addEventListener(evt, (e) => e.stopPropagation(), true);
@@ -1298,12 +1314,52 @@
             });
         }
 
+        async function doSaveProjectName() {
+            const updatedName = nameInput ? nameInput.value.trim() : '';
+            if (!updatedName) return;
+            if (nameSaveBtn) {
+                nameSaveBtn.textContent = 'Applying...';
+                nameSaveBtn.style.background = '#0284c7';
+            }
+            await saveProjectName(updatedName);
+            document.title = `${updatedName} - TVS SCADA`;
+            ensureTvsHeaderLogo();
+            if (nameSaveBtn) {
+                nameSaveBtn.textContent = 'Active! ✓';
+                nameSaveBtn.style.background = '#2e7d32';
+                nameSaveBtn.style.borderColor = '#2e7d32';
+                setTimeout(() => {
+                    nameSaveBtn.textContent = 'Apply';
+                    nameSaveBtn.style.background = '#3f51b5';
+                    nameSaveBtn.style.borderColor = 'none';
+                }, 2000);
+            }
+        }
+
+        if (nameSaveBtn) {
+            nameSaveBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                doSaveProjectName();
+            });
+        }
+
+        if (nameInput) {
+            nameInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    doSaveProjectName();
+                }
+            });
+        }
+
         async function doSaveSettings() {
             const val = input.value.trim();
             const updatedName = nameInput ? nameInput.value.trim() : '';
 
             if (updatedName) {
-                await saveProjectName(updatedName);
+                await doSaveProjectName();
             }
 
             if (val) {
@@ -1315,7 +1371,7 @@
                 
                 await syncSubpathToGateway(clean, detectedPort, updatedName);
                 
-                const updatedViewUrl = viewName ? `${hostUrl}${clean}/home/${viewName}` : `${hostUrl}${clean}/home`;
+                const updatedViewUrl = viewName ? `${hostUrl}${clean}/home?viewName=${encodeURIComponent(viewName)}` : `${hostUrl}${clean}/home`;
                 const updatedEditorUrl = `${hostUrl}${clean}/editor`;
 
                 viewInput.value = updatedViewUrl;
@@ -1335,7 +1391,7 @@
 
         saveBtn.addEventListener('click', doSaveSettings);
 
-        const dialogOkBtn = dialog.querySelector('.dialog-action button[color="primary"], mat-dialog-actions button:last-child, button[cdkfocusinitial]');
+        const dialogOkBtn = dialog.querySelector('.dialog-action button[color="primary"], .dialog-action button.mat-primary, mat-dialog-actions button:last-child, button[cdkfocusinitial], .dialog-action button:last-child');
         if (dialogOkBtn) {
             dialogOkBtn.addEventListener('click', () => {
                 doSaveSettings();

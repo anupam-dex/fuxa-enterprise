@@ -759,9 +759,20 @@ function startFuxa() {
                                 db.get("SELECT value FROM general WHERE name = 'name';", (err, row) => {
                                     if (row && row.value) {
                                         try { pName = JSON.parse(row.value); } catch (_) { pName = row.value; }
+                                        db.close();
+                                        return res.json({ name: pName, port: currentPort });
+                                    } else {
+                                        db.get("SELECT value FROM general WHERE name = 'general';", (err2, row2) => {
+                                            if (row2 && row2.value) {
+                                                try {
+                                                    const g = JSON.parse(row2.value);
+                                                    if (g.title) pName = g.title;
+                                                } catch (_) {}
+                                            }
+                                            db.close();
+                                            return res.json({ name: pName, port: currentPort });
+                                        });
                                     }
-                                    db.close();
-                                    return res.json({ name: pName, port: currentPort });
                                 });
                                 return;
                             }
@@ -788,28 +799,28 @@ function startFuxa() {
                                             db.run("UPDATE general SET value = ? WHERE name = 'general';", [JSON.stringify(g)]);
                                         } catch (e) {}
                                     }
-                                });
-                                db.get("SELECT value FROM general WHERE name = 'layout';", (err, row) => {
-                                    if (row && row.value) {
-                                        try {
-                                            const l = JSON.parse(row.value);
-                                            if (l.header) {
-                                                l.header.title = newName;
-                                                if (Array.isArray(l.header.items)) {
-                                                    for (const it of l.header.items) {
-                                                        if (it.id === 'header_headline' || it.type === 'label') {
-                                                            it.text = newName;
-                                                            if (it.property) it.property.text = newName;
+                                    db.get("SELECT value FROM general WHERE name = 'layout';", (err2, row2) => {
+                                        if (row2 && row2.value) {
+                                            try {
+                                                const l = JSON.parse(row2.value);
+                                                if (l.header) {
+                                                    l.header.title = newName;
+                                                    if (Array.isArray(l.header.items)) {
+                                                        for (const it of l.header.items) {
+                                                            if (it.id === 'header_headline' || it.type === 'label') {
+                                                                it.text = newName;
+                                                                if (it.property) it.property.text = newName;
+                                                            }
                                                         }
                                                     }
                                                 }
-                                            }
-                                            db.run("UPDATE general SET value = ? WHERE name = 'layout';", [JSON.stringify(l)]);
-                                        } catch (e) {}
-                                    }
+                                                db.run("UPDATE general SET value = ? WHERE name = 'layout';", [JSON.stringify(l)]);
+                                            } catch (e) {}
+                                        }
+                                        db.close();
+                                    });
                                 });
                             });
-                            db.close();
                             logger.info(`[FUXA-Database] Updated project name to "${newName}" in ${dbFile}`);
                         }
                     } catch (e) {}
