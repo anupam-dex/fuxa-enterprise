@@ -1512,6 +1512,40 @@
         const inputEl = urlDiv.querySelector('#fuxa-specific-view-url-text');
         const openLink = urlDiv.querySelector('#fuxa-link-open-specific-view');
 
+        function executeCopy(textToCopy) {
+            if (navigator.clipboard && window.isSecureContext) {
+                return navigator.clipboard.writeText(textToCopy).catch(() => {
+                    return fallbackCopy(textToCopy);
+                });
+            }
+            return fallbackCopy(textToCopy);
+        }
+
+        function fallbackCopy(textToCopy) {
+            try {
+                const ta = document.createElement('textarea');
+                ta.value = textToCopy;
+                ta.style.position = 'fixed';
+                ta.style.top = '-9999px';
+                ta.style.left = '-9999px';
+                ta.setAttribute('readonly', '');
+                document.body.appendChild(ta);
+                ta.focus();
+                ta.select();
+                ta.setSelectionRange(0, 99999);
+                const successful = document.execCommand('copy');
+                document.body.removeChild(ta);
+                return successful;
+            } catch (err) {
+                if (inputEl) {
+                    inputEl.focus();
+                    inputEl.select();
+                    document.execCommand('copy');
+                }
+                return false;
+            }
+        }
+
         if (nameInput) {
             nameInput.addEventListener('input', () => {
                 const updatedName = nameInput.value.trim();
@@ -1527,33 +1561,30 @@
                 if (openLink) openLink.addEventListener(evt, (e) => e.stopPropagation(), true);
             });
 
-            copyBtn.addEventListener('click', (e) => {
+            inputEl.addEventListener('click', (e) => {
+                e.stopPropagation();
+                inputEl.select();
+            });
+
+            copyBtn.addEventListener('click', async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                if (navigator.clipboard) {
-                    navigator.clipboard.writeText(inputEl.value);
-                } else {
-                    inputEl.select();
-                    document.execCommand('copy');
-                }
-                const origText = copyBtn.textContent;
+                const url = inputEl.value;
+                inputEl.focus();
+                inputEl.select();
+                await executeCopy(url);
+
+                const origText = 'Copy URL';
                 copyBtn.textContent = 'Copied! ✓';
                 copyBtn.style.borderColor = '#16a34a';
-                copyBtn.style.color = '#4ade80';
+                copyBtn.style.background = '#15803d';
+                copyBtn.style.color = '#ffffff';
                 setTimeout(() => {
                     copyBtn.textContent = origText;
                     copyBtn.style.borderColor = 'rgba(128, 128, 128, 0.4)';
+                    copyBtn.style.background = 'rgba(255, 255, 255, 0.08)';
                     copyBtn.style.color = '#ffffff';
                 }, 2000);
-            });
-        }
-
-        if (nameInput) {
-            nameInput.addEventListener('input', () => {
-                const currentName = nameInput.value.trim() || 'MainView';
-                const updatedUrl = `${hostUrl}${currentSubpath}/home/${encodeURIComponent(currentName)}`;
-                if (inputEl) inputEl.value = updatedUrl;
-                if (openLink) openLink.href = updatedUrl;
             });
         }
     }
