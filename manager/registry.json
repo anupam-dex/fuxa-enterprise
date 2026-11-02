@@ -31,5 +31,54 @@
     "7": "Robotics & Automation",
     "8": "Material Handling"
   },
-  "instances": {}
+  "instances": {
+    "fuxa_p9_d6_l1_9610": {
+      "id": "fuxa_p9_d6_l1_9610",
+      "name": "Paintshop Oven Line 1",
+      "plant": 9,
+      "division": 6,
+      "line": 1,
+      "port": 9610,
+      "subpath": "/p9/div6/l1",
+      "status": "RUNNING",
+      "editor_url": "/p9/div6/l1/editor",
+      "home_url": "/p9/div6/l1/home"
+    },
+    "fuxa_p9_d6_l1_9611": {
+      "id": "fuxa_p9_d6_l1_9611",
+      "name": "PTED",
+      "plant": 9,
+      "division": 6,
+      "line": 1,
+      "port": 9611,
+      "subpath": "/p9/ps/pted",
+      "status": "RUNNING",
+      "editor_url": "/p9/ps/pted/editor",
+      "home_url": "/p9/ps/pted/home"
+    },
+    "fuxa_p9_d6_l2_9621": {
+      "id": "fuxa_p9_d6_l2_9621",
+      "name": "EMS",
+      "plant": 9,
+      "division": 6,
+      "line": 2,
+      "port": 9621,
+      "subpath": "/p9/ps/ems",
+      "status": "RUNNING",
+      "editor_url": "/p9/ps/ems/editor",
+      "home_url": "/p9/ps/ems/home"
+    },
+    "fuxa_p9_d6_l3_9630": {
+      "id": "fuxa_p9_d6_l3_9630",
+      "name": "TopCoat",
+      "plant": 9,
+      "division": 6,
+      "line": 3,
+      "port": 9630,
+      "subpath": "/p9/ps/tc",
+      "status": "RUNNING",
+      "editor_url": "/p9/ps/tc/editor",
+      "home_url": "/p9/ps/tc/home"
+    }
+  }
 }

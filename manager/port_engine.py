@@ -63,6 +63,94 @@ class PortEngine:
             except Exception:
                 pass
 
+        # 3. Auto-discover existing instance directories on disk
+        instances_dir = os.path.join(os.path.dirname(__file__), "..", "instances")
+        if os.path.exists(instances_dir):
+            import glob
+            for p_dir in glob.glob(os.path.join(instances_dir, "port_*")):
+                if not os.path.isdir(p_dir):
+                    continue
+                dirname = os.path.basename(p_dir)
+                try:
+                    port_num = int(dirname.replace("port_", ""))
+                except Exception:
+                    continue
+
+                # Check if this port is already in instances
+                found_key = None
+                for k, v in data["instances"].items():
+                    if v.get("port") == port_num:
+                        found_key = k
+                        break
+
+                port_str = str(port_num)
+                plant_id = int(port_str[0]) if len(port_str) >= 4 else 9
+                div_id = int(port_str[1]) if len(port_str) >= 4 else 6
+                line_id = int(port_str[2]) if len(port_str) >= 4 else 1
+
+                # Read project name from SQLite database if available
+                proj_name = None
+                db_path = os.path.join(p_dir, "project.fuxap.db")
+                if os.path.exists(db_path):
+                    try:
+                        import sqlite3
+                        conn = sqlite3.connect(db_path)
+                        cur = conn.cursor()
+                        cur.execute("SELECT * FROM general")
+                        for k, v in cur.fetchall():
+                            if k == "name" and v:
+                                try:
+                                    proj_name = json.loads(v)
+                                except Exception:
+                                    proj_name = v.strip('"')
+                            elif k == "general" and v and not proj_name:
+                                try:
+                                    g_data = json.loads(v)
+                                    if g_data.get("title"):
+                                        proj_name = g_data["title"]
+                                except Exception:
+                                    pass
+                        conn.close()
+                    except Exception:
+                        pass
+
+                if not found_key:
+                    inst_id = f"fuxa_p{plant_id}_d{div_id}_l{line_id}_{port_num}"
+                    subpath = f"/p{plant_id}/div{div_id}/l{line_id}"
+                    data["instances"][inst_id] = {
+                        "id": inst_id,
+                        "name": proj_name or f"Plant {plant_id} Line {line_id}",
+                        "plant": plant_id,
+                        "division": div_id,
+                        "line": line_id,
+                        "port": port_num,
+                        "subpath": subpath,
+                        "work_dir": os.path.abspath(p_dir),
+                        "status": "RUNNING" if self.is_port_in_use(port_num) else "STOPPED",
+                        "editor_url": f"{subpath}/editor",
+                        "home_url": f"{subpath}/home"
+                    }
+                else:
+                    # Update existing entry with any missing metadata
+                    target = data["instances"][found_key]
+                    if not target.get("plant"): target["plant"] = plant_id
+                    if not target.get("division"): target["division"] = div_id
+                    if not target.get("line"): target["line"] = line_id
+                    if proj_name and not target.get("name"): target["name"] = proj_name
+                    if not target.get("work_dir"): target["work_dir"] = os.path.abspath(p_dir)
+
+        # 4. Enforce valid plant, division, line on all instances
+        for inst_id, inst in list(data["instances"].items()):
+            p_num = inst.get("port")
+            if p_num:
+                p_str = str(p_num)
+                if not inst.get("plant"):
+                    inst["plant"] = int(p_str[0]) if len(p_str) >= 4 else 9
+                if not inst.get("division"):
+                    inst["division"] = int(p_str[1]) if len(p_str) >= 4 else 6
+                if not inst.get("line"):
+                    inst["line"] = int(p_str[2]) if len(p_str) >= 4 else 1
+
         return data
 
     def _save_registry(self):
@@ -140,10 +228,16 @@ class PortEngine:
             }
 
             for inst_id, inst in instances.items():
-                if str(inst.get("plant")) == str(p_id):
+                inst_plant = str(inst.get("plant") or "")
+                if not inst_plant:
+                    p_str = str(inst.get("port", ""))
+                    inst_plant = p_str[0] if len(p_str) >= 4 else "9"
+
+                if inst_plant == str(p_id):
                     is_live = self.is_port_in_use(inst["port"])
                     inst_copy = dict(inst)
                     inst_copy["is_live"] = is_live
+                    inst_copy["status"] = "RUNNING" if is_live else "STOPPED"
                     plant_data["instances"].append(inst_copy)
 
             matrix.append(plant_data)

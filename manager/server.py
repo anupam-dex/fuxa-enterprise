@@ -119,6 +119,12 @@ def update_subpath(req: UpdateSubpathRequest):
     instances = port_engine.get_all_instances()
     found = False
     target_work_dir = None
+    target_plant = 9
+    port_str = str(req.port)
+    deduced_plant = int(port_str[0]) if len(port_str) >= 4 else 9
+    deduced_div = int(port_str[1]) if len(port_str) >= 4 else 6
+    deduced_line = int(port_str[2]) if len(port_str) >= 4 else 1
+
     for inst_id, inst in instances.items():
         if inst.get("port") == req.port:
             inst["subpath"] = new_sub
@@ -126,22 +132,36 @@ def update_subpath(req: UpdateSubpathRequest):
             inst["home_url"] = f"{new_sub}/home"
             if req.name:
                 inst["name"] = req.name
+            if not inst.get("plant"):
+                inst["plant"] = deduced_plant
+            if not inst.get("division"):
+                inst["division"] = deduced_div
+            if not inst.get("line"):
+                inst["line"] = deduced_line
+            target_plant = inst.get("plant", deduced_plant)
             target_work_dir = inst.get("work_dir") or os.path.join(INSTANCES_DIR, f"port_{req.port}")
+            inst["work_dir"] = target_work_dir
+            inst["status"] = "RUNNING" if port_engine.is_port_in_use(req.port) else "STOPPED"
             port_engine.register_instance(inst_id, inst)
             found = True
             break
 
     if not found:
-        inst_id = f"port_{req.port}"
+        inst_id = f"fuxa_p{deduced_plant}_d{deduced_div}_l{deduced_line}_{req.port}"
         target_work_dir = os.path.join(INSTANCES_DIR, f"port_{req.port}")
+        target_plant = deduced_plant
         inst = {
             "id": inst_id,
             "port": req.port,
+            "plant": deduced_plant,
+            "division": deduced_div,
+            "line": deduced_line,
             "subpath": new_sub,
             "name": req.name or f"Custom Line ({new_sub})",
             "work_dir": target_work_dir,
             "editor_url": f"{new_sub}/editor",
-            "home_url": f"{new_sub}/home"
+            "home_url": f"{new_sub}/home",
+            "status": "RUNNING" if port_engine.is_port_in_use(req.port) else "STOPPED"
         }
         port_engine.register_instance(inst_id, inst)
         found = True
@@ -160,7 +180,7 @@ def update_subpath(req: UpdateSubpathRequest):
     # Notify Embedded Gateway on Port 80
     try:
         import requests
-        requests.post("http://127.0.0.1:80/api/gateway/subpath", json={"subpath": new_sub, "port": req.port, "name": req.name}, timeout=0.5)
+        requests.post("http://127.0.0.1:80/api/gateway/subpath", json={"subpath": new_sub, "port": req.port, "name": req.name, "plant": target_plant}, timeout=0.5)
     except Exception:
         pass
 

@@ -119,10 +119,15 @@ const server = http.createServer((req, res) => {
                 }
 
                 // Update in-memory routing table immediately
+                const portStr = String(targetPort);
+                const pId = data.plant ? parseInt(data.plant, 10) : ((portStr.length >= 4) ? parseInt(portStr[0], 10) : 9);
+                const dId = (portStr.length >= 4) ? parseInt(portStr[1], 10) : 6;
+                const lId = (portStr.length >= 4) ? parseInt(portStr[2], 10) : 1;
+
                 routingTable[newSubpath] = {
                     port: targetPort,
                     name: data.name || `Instance ${targetPort}`,
-                    plant: 9
+                    plant: pId
                 };
 
                 // Persist to both registry.json and protected instances/registry.json
@@ -140,14 +145,21 @@ const server = http.createServer((req, res) => {
                                 inst.editor_url = `${newSubpath}/editor`;
                                 inst.home_url = `${newSubpath}/home`;
                                 if (data.name) inst.name = data.name;
+                                if (!inst.plant) inst.plant = pId;
+                                if (!inst.division) inst.division = dId;
+                                if (!inst.line) inst.line = lId;
                                 found = true;
                                 break;
                             }
                         }
                         if (!found) {
-                            reg.instances[`port_${targetPort}`] = {
-                                id: `port_${targetPort}`,
+                            const instKey = `fuxa_p${pId}_d${dId}_l${lId}_${targetPort}`;
+                            reg.instances[instKey] = {
+                                id: instKey,
                                 port: targetPort,
+                                plant: pId,
+                                division: dId,
+                                line: lId,
                                 subpath: newSubpath,
                                 name: data.name || `Custom Line (${newSubpath})`,
                                 editor_url: `${newSubpath}/editor`,
