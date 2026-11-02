@@ -1692,6 +1692,13 @@
         ensureAboutDialogCustomization();
         enforceViewServerRestrictions();
         enforceViewPropertyLayout();
+
+        // Prevent FUXA core socket reconnect from auto-reloading while modal dialogs are open
+        if (document.querySelector('.cdk-overlay-pane, mat-dialog-container, app-view-property, app-app-settings')) {
+            try {
+                sessionStorage.setItem('fuxa_last_safe_reload', String(Date.now()));
+            } catch (e) {}
+        }
     }, 800);
 
 })();
