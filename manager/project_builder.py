@@ -575,8 +575,9 @@ def update_project_name_in_db(db_path: str, new_name: str) -> bool:
     if not os.path.exists(db_path):
         return False
     try:
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(db_path, timeout=15.0)
         cur = conn.cursor()
+        cur.execute("PRAGMA busy_timeout = 10000;")
         cur.execute("CREATE TABLE IF NOT EXISTS general (name TEXT PRIMARY KEY, value TEXT);")
         # 1. Update project name
         cur.execute("INSERT OR REPLACE INTO general (name, value) VALUES (?, ?);", ("name", json.dumps(new_name)))
