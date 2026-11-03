@@ -1791,7 +1791,6 @@
             renderStorageServerTopologicalView();
             return;
         }
-        }
         if (isMutating) return;
         isMutating = true;
         try {
