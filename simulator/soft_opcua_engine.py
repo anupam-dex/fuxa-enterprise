@@ -286,7 +286,7 @@ class SoftOPCServerInstance:
             self.server = None
             self.running = False
             self.uptime_start = None
-            return True
+        return True
 
     async def update_simulation_tick(self, t_now):
         if not self.running:
