@@ -47,6 +47,9 @@ pkill -9 -f "server/main.js" 2>/dev/null || true
 pkill -9 -f "FUXA" 2>/dev/null || true
 sleep 1
 
+mkdir -p "$SCRIPT_DIR/instances" 2>/dev/null || true
+chmod -R a+rw "$SCRIPT_DIR/instances" 2>/dev/null || true
+
 if [ ! -d "$SCRIPT_DIR/fuxa/server/node_modules" ]; then
     echo "Installing FUXA server node modules..."
     cd "$SCRIPT_DIR/fuxa/server"
