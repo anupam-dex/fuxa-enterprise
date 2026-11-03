@@ -19,14 +19,38 @@ function OpcUAclient(_data, _logger, _events, _runtime) {
     var events = _events;               // Events to commit change to runtime
     var the_session;
     var the_subscription = null;
-    var options = { connectionStrategy: { maxRetry: 1 }, keepSessionAlive: true, endpointMustExist: false };  // Connections options
-    var client = opcua.OPCUAClient.create(options);
-    const attributeKeys = Object.keys(opcua.AttributeIds).filter((x) => x === 'DataType' || x === 'AccessLevel' || x === 'UserAccessLevel');//x !== "INVALID" && x[0].match(/[a-zA-Z]/));
+    var options = {
+        connectionStrategy: { maxRetry: 1, initialDelay: 1000, maxDelay: 3000 },
+        keepSessionAlive: true,
+        endpointMustExist: false,
+        requestedSessionTimeout: 60000,
+        responseTimeout: 10000
+    };
+    var client = null;
+
+    var _initFreshClient = function (customOpts) {
+        if (client) {
+            try {
+                client.removeAllListeners();
+            } catch (e) {}
+        }
+        var opts = Object.assign({}, options);
+        if (customOpts) {
+            opts = Object.assign(opts, customOpts);
+        }
+        client = opcua.OPCUAClient.create(opts);
+        return client;
+    };
+    _initFreshClient();
+
+    const attributeKeys = Object.keys(opcua.AttributeIds).filter((x) => x === 'DataType' || x === 'AccessLevel' || x === 'UserAccessLevel');
 
     var varsValue = {};                 // Signals to send to frontend { id, type, value }
     var getProperty = null;             // Function to ask property (security)
     var lastTimestampValue;             // Last Timestamp of asked values
     var tagsIdMap = {};                 // Map of tag id with opc nodeId
+    var workingTimestamp = 0;           // Timestamp for lock watchdog
+
     /**
      * Connect the client to OPC UA server
      * Open Session, Create Subscription, Emit connection status, Clear the memory Tags value
@@ -35,108 +59,138 @@ function OpcUAclient(_data, _logger, _events, _runtime) {
         var self = this;
         return new Promise(function (resolve, reject) {
             if (!_checkWorking(true)) {
-                reject();
-            } else {
-                var property = null;
-                async.series([
-                    // step 1 check property
-                    function (callback) {
-                        if (getProperty) {
-                            getProperty({query: 'security', name: data.id}).then(result => {
-                                if (result && result.value && result.value !== 'null') {
-                                    // property security mode
-                                    property = JSON.parse(result.value);
-                                    var opts = {
-                                        // applicationName: 'Myclient',
-                                        endpointMustExist: false,
-                                        keepSessionAlive: true,
-                                        connectionStrategy: { maxRetry: 1 } };
-                                    if (property.mode) {
-                                        if (property.mode.securityMode) {
-                                            opts['securityMode'] = property.mode.securityMode;
-                                        }
-                                        if (property.mode.securityPolicy) {
-                                            opts['securityPolicy'] = property.mode.securityPolicy;
-                                        }
-                                    }
-                                    client = opcua.OPCUAClient.create(opts);
-                                }
-                                callback();
-                            }).catch(function (err) {
-                                callback(err);
-                            });
-                        } else {
-                            callback();
-                        }
-                    },
-                    // step 2 connect
-                    function (callback) {
-                        const endpoint = data.property.address;
-                        client.connect(endpoint, function (err) {
-                            if (err) {
-                                _clearVarsValue();
-                                logger.error(`'${data.name}' connect failure! ${err}`);
-                            } else {
-                                logger.info(`'${data.name}' connection`, true);
-                            }
-                            callback(err);
-                        });
-                        client.on("connection_lost", () => {
-                            logger.error(`'${data.name}' connection lost!`);
-                            self.disconnect().then(function () { });
-                        });
-                        client.on("backoff", (retry, delay) => {
-                            logger.error(`'${data.name}' retry to connect! ${retry}`);
-                        });
-                    },
-                    // step 3 create session
-                    function (callback) {
-                        const userIdentityInfo = { };
-                        if (property && property.uid && property.pwd) {
-                            userIdentityInfo['userName'] = property.uid;
-                            userIdentityInfo['password'] = property.pwd;
-                        }
-                        client.createSession(userIdentityInfo, function (err, session) {
-                            if (err) {
-                                _clearVarsValue();
-                                logger.error(`'${data.name}' createSession failure! ${err}`);
-                            } else {
-                                the_session = session;
-                                the_session.on('session_closed', () => {
-                                    logger.warn(`'${data.name}' Warning => Session closed`);
-                                });
-                                the_session.on('keepalive', () => {
-                                    logger.info(`'${data.name}' session keepalive`, true);
-                                });
-                                the_session.on('keepalive_failure', () => {
-                                    logger.error(`'${data.name}' session keepalive failure!`);
-                                    self.disconnect().then(function () { });
-                                });
-                                the_session.on("terminated", function() {
-                                    console.log("terminated");
-                                });
-                                _createSubscription();
-                            }
-                            callback(err);
-                        });
-                    }],
-                    function (err) {
-                        if (err) {
-                            logger.error(`'${data.name}' try to connect error! ${err}`);
-                            _emitStatus('connect-error');
-                            _clearVarsValue();
-                            connected = false;
-                            reject();
-                            client.disconnect(function () { });
-                        } else {
-                            logger.info(`'${data.name}' connected!`, true);
-                            _emitStatus('connect-ok');
-                            connected = true;
-                            resolve();
-                        }
-                        _checkWorking(false);
-                    });
+                reject('Device working locked');
+                return;
             }
+            var property = null;
+            async.series([
+                // step 1 check property & create fresh client instance
+                function (callback) {
+                    if (getProperty) {
+                        getProperty({query: 'security', name: data.id}).then(result => {
+                            var customOpts = null;
+                            if (result && result.value && result.value !== 'null') {
+                                property = JSON.parse(result.value);
+                                customOpts = {};
+                                if (property.mode) {
+                                    if (property.mode.securityMode) {
+                                        customOpts['securityMode'] = property.mode.securityMode;
+                                    }
+                                    if (property.mode.securityPolicy) {
+                                        customOpts['securityPolicy'] = property.mode.securityPolicy;
+                                    }
+                                }
+                            }
+                            _initFreshClient(customOpts);
+                            callback();
+                        }).catch(function (err) {
+                            _initFreshClient();
+                            callback(err);
+                        });
+                    } else {
+                        _initFreshClient();
+                        callback();
+                    }
+                },
+                // step 2 connect
+                function (callback) {
+                    const endpoint = data.property.address;
+                    client.removeAllListeners();
+                    client.on("connection_lost", () => {
+                        logger.error(`'${data.name}' OPC-UA connection lost! Initiating clean failover.`);
+                        connected = false;
+                        monitored = false;
+                        the_subscription = null;
+                        the_session = null;
+                        _checkWorking(false);
+                        _emitStatus('connect-error');
+                        self.disconnect().catch(() => {});
+                    });
+                    client.on("backoff", (retry, delay) => {
+                        logger.warn(`'${data.name}' OPC-UA connection backoff (attempt ${retry})...`);
+                    });
+
+                    client.connect(endpoint, function (err) {
+                        if (err) {
+                            _clearVarsValue();
+                            logger.error(`'${data.name}' connect failure! ${err}`);
+                        } else {
+                            logger.info(`'${data.name}' connection established`, true);
+                        }
+                        callback(err);
+                    });
+                },
+                // step 3 create session
+                function (callback) {
+                    const userIdentityInfo = { };
+                    if (property && property.uid && property.pwd) {
+                        userIdentityInfo['userName'] = property.uid;
+                        userIdentityInfo['password'] = property.pwd;
+                    }
+                    client.createSession(userIdentityInfo, function (err, session) {
+                        if (err) {
+                            _clearVarsValue();
+                            logger.error(`'${data.name}' createSession failure! ${err}`);
+                        } else {
+                            the_session = session;
+                            the_session.on('session_closed', () => {
+                                logger.warn(`'${data.name}' OPC-UA Session closed`);
+                                connected = false;
+                                monitored = false;
+                                the_subscription = null;
+                                the_session = null;
+                                _checkWorking(false);
+                                _emitStatus('connect-off');
+                            });
+                            the_session.on('keepalive', () => {
+                                logger.info(`'${data.name}' session keepalive`, true);
+                            });
+                            the_session.on('keepalive_failure', () => {
+                                logger.error(`'${data.name}' OPC-UA session keepalive failure! Reconnecting.`);
+                                connected = false;
+                                monitored = false;
+                                the_subscription = null;
+                                the_session = null;
+                                _checkWorking(false);
+                                _emitStatus('connect-error');
+                                self.disconnect().catch(() => {});
+                            });
+                            the_session.on("terminated", function() {
+                                logger.warn(`'${data.name}' OPC-UA session terminated.`);
+                                connected = false;
+                                monitored = false;
+                                the_subscription = null;
+                                the_session = null;
+                                _checkWorking(false);
+                                _emitStatus('connect-off');
+                            });
+                            _createSubscription();
+                        }
+                        callback(err);
+                    });
+                }],
+                function (err) {
+                    if (err) {
+                        logger.error(`'${data.name}' try to connect error! ${err}`);
+                        _emitStatus('connect-error');
+                        _clearVarsValue();
+                        connected = false;
+                        monitored = false;
+                        the_subscription = null;
+                        the_session = null;
+                        _checkWorking(false);
+                        reject(err);
+                        try {
+                            if (client) client.disconnect(function () { });
+                        } catch (e) {}
+                    } else {
+                        logger.info(`'${data.name}' connected!`, true);
+                        _emitStatus('connect-ok');
+                        connected = true;
+                        _checkWorking(false);
+                        resolve();
+                    }
+                });
         });
     }
 
@@ -457,34 +511,59 @@ function OpcUAclient(_data, _logger, _events, _runtime) {
     }
 
     /**
-     * Disconnect the OPC UA client and close session if used
+     * Disconnect the OPC UA client and close session if used.
+     * Wrapped in a 1500ms watchdog timeout so a dead network socket never hangs FUXA!
      * @param {*} callback
      */
     var _disconnect = function (callback) {
-        if (!the_session) {
-            client.disconnect(function (err) {
-                callback(err);
-            });
-        } else {
-            the_session.close(function () {
-                client.disconnect(function (err) {
-                    callback(err);
+        let finished = false;
+        const done = function (err) {
+            if (finished) return;
+            finished = true;
+            clearTimeout(watchdogTimer);
+            the_subscription = null;
+            the_session = null;
+            monitored = false;
+            connected = false;
+            if (client) {
+                try {
+                    client.removeAllListeners();
+                } catch (e) {}
+            }
+            if (callback) callback(err);
+        };
+
+        const watchdogTimer = setTimeout(function () {
+            logger.warn(`'${data.name}' OPC-UA disconnect timeout (PLC unresponsive). Forcing cleanup.`);
+            done(null);
+        }, 1500);
+
+        try {
+            if (the_session) {
+                try { the_session.removeAllListeners(); } catch (e) {}
+                the_session.close(function () {
+                    if (client) {
+                        client.disconnect(function (err) {
+                            done(err);
+                        });
+                    } else {
+                        done(null);
+                    }
                 });
-            });
+            } else if (client) {
+                client.disconnect(function (err) {
+                    done(err);
+                });
+            } else {
+                done(null);
+            }
+        } catch (err) {
+            done(err);
         }
     }
 
     /**
      * Create a session subscription to refresh Tags value.
-     *
-     * The subscription's `requestedPublishingInterval` follows the device's
-     * polling rate (`data.polling`) so the device-level "update rate" UI
-     * setting actually propagates to the OPC-UA subscription. Falls back to
-     * 100 ms — the OPC-UA protocol minimum in most servers — when the user
-     * hasn't configured a polling rate.
-     *
-     * Previously this was hard-coded to 500 ms regardless of UI input,
-     * capping subscription updates at 2 Hz no matter what the user picked.
      */
     var _createSubscription = function () {
         if (the_session) {
@@ -504,6 +583,14 @@ function OpcUAclient(_data, _logger, _events, _runtime) {
                         return;
                     }
                     the_subscription = subscription;
+                    the_subscription.on('terminated', () => {
+                        logger.warn(`'${data.name}' OPC-UA subscription terminated.`);
+                        monitored = false;
+                        the_subscription = null;
+                    });
+                    the_subscription.on('error', (err) => {
+                        logger.warn(`'${data.name}' OPC-UA subscription error: ${err}`);
+                    });
                     logger.info(`'${data.name}' subscription created!`, true);
                 });
         }
@@ -511,8 +598,6 @@ function OpcUAclient(_data, _logger, _events, _runtime) {
 
     /**
      * Start the monitor by subsribe the Tags to check if value change
-     * samplingInterval = 1000 msec.
-     * @param {*} callback
      */
     var _startMonitor = function () {
         return new Promise(async function (resolve, reject) {
@@ -530,6 +615,9 @@ function OpcUAclient(_data, _logger, _events, _runtime) {
                             opcua.TimestampsToReturn.Both
                         );
                         monitoredItem.on('changed', _monitorcallback(nodeId));
+                        monitoredItem.on('err', function (err) {
+                            logger.warn(`'${nodeId}' monitored item warning: ${err}`);
+                        });
                     } catch (err) {
                         logger.error(`'${nodeId}' _startMonitor ${err}`);
                     }
@@ -597,17 +685,26 @@ function OpcUAclient(_data, _logger, _events, _runtime) {
     }
 
     /**
-     * To manage a overloading connection
+     * To manage an overloading connection.
+     * Includes a 15-second watchdog so network dropouts never freeze FUXA permanently!
      * @param {*} check
      */
     var _checkWorking = function (check) {
+        const now = Date.now();
         if (check && working) {
-            if (monitored) {
-                logger.warn(`'${data.name}' working (connection || polling) overload!`);
+            // Auto-release stuck lock after 15 seconds to prevent permanent deadlock
+            if (now - workingTimestamp > 15000) {
+                logger.warn(`'${data.name}' OPC-UA watchdog: auto-releasing stuck working lock (>15s).`);
+                working = false;
+            } else {
+                if (monitored) {
+                    logger.warn(`'${data.name}' working (connection || polling) overload!`);
+                }
+                return false;
             }
-            return false;
         }
         working = check;
+        workingTimestamp = now;
         return true;
     }
 
