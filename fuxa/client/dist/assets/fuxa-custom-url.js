@@ -1023,7 +1023,41 @@
         };
     }
 
+    function isStorageServer() {
+        const port = parseInt(window.location.port, 10);
+        if ([5100, 5200, 5300, 5400, 5900].includes(port)) return true;
+        const path = (window.location.pathname || '').toLowerCase();
+        if (path.includes('/storage')) return true;
+        return false;
+    }
+
+    function renderStorageServerMasterBanner() {
+        if (!window.location.pathname.includes('/device')) return;
+        const workPanel = document.querySelector('app-device .work-panel, app-device');
+        if (workPanel && !document.getElementById('fuxa-storage-master-banner')) {
+            const b = document.createElement('div');
+            b.id = 'fuxa-storage-master-banner';
+            b.style.cssText = 'background: #064e3b; border: 1.5px solid #10b981; border-left: 6px solid #10b981; border-radius: 6px; padding: 14px 20px; margin: 44px 20px 14px 20px; display: flex; align-items: flex-start; gap: 14px; color: #ecfdf5; font-size: 13.5px; font-family: system-ui, -apple-system, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,0.3);';
+            b.innerHTML = `
+                <span style="font-size: 24px; line-height: 1;">🟢</span>
+                <div style="flex: 1; line-height: 1.55;">
+                    <strong style="color: #6ee7b7; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; display: block; margin-bottom: 4px;">
+                        Central Storage Master &bull; Full Field Device Acquisition Mode
+                    </strong>
+                    <div style="color: #a7f3d0; font-size: 13px;">
+                        All native field protocols are enabled (Siemens S7, Modbus TCP/RTU, OPC-UA Client, BACnet, EtherNet/IP, MQTT). Field connections added here automatically log tag history into InfluxDB and become available for all Plant View Servers.
+                    </div>
+                </div>
+            `;
+            workPanel.prepend(b);
+        }
+    }
+
     function enforceViewServerRestrictions() {
+        if (isStorageServer()) {
+            renderStorageServerMasterBanner();
+            return;
+        }
         if (isMutating) return;
         isMutating = true;
         try {

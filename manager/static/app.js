@@ -54,8 +54,8 @@ function renderTopology(matrix) {
                 <span class="views-count-pill ${pCount > 0 ? 'has-active' : ''}">${pCount} Active</span>
             </div>
             <div class="plant-strip-bottom">
-                <span class="storage-chip">
-                    <span class="dot live"></span> Storage :${plant.storage_port}
+                <span class="storage-chip" onclick="event.stopPropagation(); window.open('http://' + (window.location.hostname || '127.0.0.1') + ':${plant.storage_port}/editor', '_blank')" title="Click to open Plant ${pId} Storage Server (Field Connections & InfluxDB)" style="cursor: pointer; transition: all 0.2s;" onmouseover="this.style.borderColor='#38bdf8'" onmouseout="this.style.borderColor=''">
+                    <span class="dot live"></span> Storage :${plant.storage_port} ↗
                 </span>
                 <span style="font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono);">InfluxDB Master</span>
             </div>

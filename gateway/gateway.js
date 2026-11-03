@@ -62,6 +62,18 @@ function loadRoutes() {
                 } catch (e) {}
             }
         }
+
+        // Add Plant Central Storage Server routes
+        const storageRoutes = {
+            '/p1/storage': { port: 5100, name: 'Plant 1 Storage Master', plant: 1 },
+            '/p2/storage': { port: 5200, name: 'Plant 2 Storage Master', plant: 2 },
+            '/p3/storage': { port: 5300, name: 'Plant 3 Storage Master', plant: 3 },
+            '/p4/storage': { port: 5400, name: 'Plant 4 Storage Master', plant: 4 },
+            '/p9/storage': { port: 5900, name: 'Plant 9 Storage Master', plant: 9 }
+        };
+        for (const [sp, t] of Object.entries(storageRoutes)) {
+            newTable[sp] = t;
+        }
         routingTable = newTable;
     } catch (e) {
         // preserve existing on read error
