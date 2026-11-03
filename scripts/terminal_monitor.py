@@ -65,6 +65,10 @@ def process_stream():
                 current_color = GRAY
             continue
 
+        # Ignore noisy Node.js internal deprecation warnings
+        if "punycode" in line or "--trace-deprecation" in line:
+            continue
+
         is_error = bool(re.search(
             r"\[ERR\]|\b(error|failed|exception|critical|fatal|502|EADDRINUSE|SQLITE_MISUSE|refused)\b",
             line,
