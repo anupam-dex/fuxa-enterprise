@@ -49,6 +49,9 @@ function Device(data, runtime) {
     var pollingInterval = DEVICE_POLLING_INTERVAL;
     var sharedDevices = data.sharedDevices;
     var tryToConnect = 0;
+    var totalConnections = 0;                               // Total successful connections since server restart
+    var reconnectCount = 0;                                 // Reconnections after initial connection since server restart
+    var lastConnectedTimestamp = null;                      // Timestamp (ms) of the last successful connection
     var comm;                                               // Interface to OPCUA/S7/.. Device
                                                             // required: connect, disconnect, isConnected, polling, init, load, getValue,
                                                             // getValues, getStatus, setValue, bindAddDaq, getTagProperty,
@@ -268,6 +271,12 @@ function Device(data, runtime) {
                 await comm.disconnect();
                 return;
             }
+            totalConnections++;
+            if (totalConnections > 1) {
+                reconnectCount++;
+            }
+            lastConnectedTimestamp = Date.now();
+            logger.info(`[DEVICE-TELEMETRY] Device '${property.name}' connected! (Total: ${totalConnections}, Reconnections: ${reconnectCount}, LastConnected: ${new Date(lastConnectedTimestamp).toISOString()})`);
             if (devicePolling) {
                 clearInterval(devicePolling);
                 devicePolling = null;
@@ -315,6 +324,24 @@ function Device(data, runtime) {
      */
     this.getStatus = function () {
         return comm.getStatus();
+    }
+
+    /**
+     * Return live connection telemetry (last connected timestamp & reconnections since restart)
+     */
+    this.getTelemetry = function () {
+        const isConn = comm ? (typeof comm.isConnected === 'function' ? comm.isConnected() : false) : false;
+        return {
+            id: property.id,
+            name: property.name,
+            type: property.type,
+            connected: isConn,
+            connectionStatus: connectionStatus,
+            lastConnected: lastConnectedTimestamp,
+            lastConnectedFormatted: lastConnectedTimestamp ? new Date(lastConnectedTimestamp).toLocaleString() : 'Never connected',
+            totalConnections: totalConnections,
+            reconnectCount: reconnectCount
+        };
     }
 
     /**

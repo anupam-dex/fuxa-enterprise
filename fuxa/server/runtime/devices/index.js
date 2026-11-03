@@ -208,6 +208,22 @@ function getDevicesStatus() {
 }
 
 /**
+ * Return live connection telemetry for all devices (last connected timestamp & reconnections)
+ */
+function getDevicesTelemetry() {
+    var telem = {};
+    for (var id in activeDevices) {
+        if (activeDevices[id] && typeof activeDevices[id].getTelemetry === 'function') {
+            telem[id] = activeDevices[id].getTelemetry();
+            if (activeDevices[id].name) {
+                telem[activeDevices[id].name] = telem[id];
+            }
+        }
+    }
+    return telem;
+}
+
+/**
  * Return all devices values
  */
 function getDevicesValues() {
@@ -576,6 +592,7 @@ var devices = module.exports = {
     updateDevice: updateDevice,
     removeDevice: removeDevice,
     getDevicesStatus: getDevicesStatus,
+    getDevicesTelemetry: getDevicesTelemetry,
     getDevicesValues: getDevicesValues,
     getDeviceValue: getDeviceValue,
     getTagValue: getTagValue,

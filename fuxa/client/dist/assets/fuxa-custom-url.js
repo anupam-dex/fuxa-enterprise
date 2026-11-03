@@ -1077,6 +1077,34 @@
         8: "Material Handling"
     };
 
+    function enhanceNativeDeviceNodesWithTelemetry(devicesList) {
+        if (!Array.isArray(devicesList)) return;
+        const nodes = document.querySelectorAll('app-device-map .node-device, .node-flow');
+        nodes.forEach(node => {
+            const header = node.querySelector('.device-header');
+            if (!header) return;
+            const name = header.textContent.trim();
+            const dev = devicesList.find(d => d.name === name || (d.property && d.property.address === name));
+            if (!dev || !dev.telemetry) return;
+
+            let badge = node.querySelector('.fuxa-native-telem-badge');
+            if (!badge) {
+                badge = document.createElement('div');
+                badge.className = 'fuxa-native-telem-badge';
+                badge.style.cssText = 'font-size: 10px; color: #94a3b8; margin-top: 4px; line-height: 1.35; font-family: monospace; text-align: left; background: rgba(0,0,0,0.45); padding: 3px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.08);';
+                node.appendChild(badge);
+            }
+            const telem = dev.telemetry;
+            const isConn = !!telem.connected;
+            const lastConn = telem.lastConnectedFormatted || (telem.lastConnected ? new Date(telem.lastConnected).toLocaleString() : 'Never');
+            const reconns = typeof telem.reconnectCount === 'number' ? telem.reconnectCount : 0;
+            badge.innerHTML = `
+                <div style="color: ${isConn ? '#4ade80' : (telem.lastConnected ? '#fde047' : '#ef4444')}; font-weight: 600;">🕒 ${lastConn}</div>
+                <div style="color: #cbd5e1;">🔄 Reconnects: <strong>${reconns}</strong></div>
+            `;
+        });
+    }
+
     async function fetchStorageTopology() {
         if (isFetchingTopology) return;
         isFetchingTopology = true;
@@ -1088,6 +1116,7 @@
             if (res && res.ok) {
                 storageTopologyData = await res.json();
                 updateStorageTopologyDOM();
+                enhanceNativeDeviceNodesWithTelemetry(storageTopologyData.devices);
             }
         } catch (e) {
             console.error('[STORAGE-TOPOLOGY] Error loading topology:', e);
@@ -1608,12 +1637,18 @@
                     else if (dev.type === 'Modbus') protoBadge = `<span style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 600;">📟 Modbus TCP</span>`;
                     else if (dev.type === 'MQTT') protoBadge = `<span style="background: rgba(236, 72, 153, 0.15); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 600;">📡 MQTT</span>`;
 
+                    const telem = dev.telemetry || {};
+                    const isConn = !!telem.connected;
+                    const lastConnFormatted = telem.lastConnectedFormatted || (telem.lastConnected ? new Date(telem.lastConnected).toLocaleString() : 'Never connected');
+                    const reconnects = typeof telem.reconnectCount === 'number' ? telem.reconnectCount : 0;
+                    const dotColor = isConn ? '#10b981' : (telem.lastConnected ? '#f59e0b' : '#ef4444');
+
                     treeHtml += `
-                        <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: transform 0.2s, border-color 0.2s;" onmouseover="this.style.borderColor='rgba(56, 189, 248, 0.5)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.1)'">
+                        <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid ${isConn ? 'rgba(16, 185, 129, 0.35)' : 'rgba(255,255,255,0.1)'}; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: transform 0.2s, border-color 0.2s;" onmouseover="this.style.borderColor='rgba(56, 189, 248, 0.5)'" onmouseout="this.style.borderColor='${isConn ? 'rgba(16, 185, 129, 0.35)' : 'rgba(255,255,255,0.1)'}'">
                             <div>
                                 <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
                                     <div style="font-weight: 700; font-size: 0.88rem; color: #f1f5f9; display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis;">
-                                        <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #10b981; box-shadow: 0 0 6px #10b981;"></span>
+                                        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor}; box-shadow: 0 0 8px ${dotColor};"></span>
                                         <span title="${dev.name}">${dev.name}</span>
                                     </div>
                                     ${protoBadge}
@@ -1621,8 +1656,28 @@
                                 <div style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 4px; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${endpoint}">
                                     📍 ${endpoint}
                                 </div>
-                                <div style="font-size: 0.72rem; color: #64748b; margin-bottom: 10px;">
+                                <div style="font-size: 0.72rem; color: #64748b; margin-bottom: 8px;">
                                     🏷️ Node: Plant ${plantId} &bull; Div ${dId} &bull; Line ${lId}
+                                </div>
+
+                                <!-- Connection Telemetry (Last Connected with Date & Reconnections after restart) -->
+                                <div style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; font-size: 0.73rem; line-height: 1.5;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                        <span style="color: #94a3b8; display: flex; align-items: center; gap: 4px;">
+                                            <span>🕒</span> Last Connected:
+                                        </span>
+                                        <span style="color: ${isConn ? '#4ade80' : (telem.lastConnected ? '#fde047' : '#94a3b8')}; font-family: monospace; font-weight: 600;" title="Last connected timestamp with date">
+                                            ${lastConnFormatted}
+                                        </span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <span style="color: #94a3b8; display: flex; align-items: center; gap: 4px;">
+                                            <span>🔄</span> Reconnections (since restart):
+                                        </span>
+                                        <span style="background: ${reconnects > 0 ? 'rgba(234, 179, 8, 0.18)' : 'rgba(255,255,255,0.06)'}; color: ${reconnects > 0 ? '#facc15' : '#cbd5e1'}; border: 1px solid ${reconnects > 0 ? 'rgba(234, 179, 8, 0.35)' : 'rgba(255,255,255,0.1)'}; padding: 1px 7px; border-radius: 10px; font-family: monospace; font-weight: 700;" title="No. of reconnections after the last server restart">
+                                            ${reconnects}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1787,6 +1842,13 @@
 
         // Fetch fresh topology from storage server backend
         fetchStorageTopology();
+        if (!window.__topoPollTimer) {
+            window.__topoPollTimer = setInterval(() => {
+                if (window.location.pathname.includes('/device') && isStorageServer()) {
+                    fetchStorageTopology();
+                }
+            }, 3000);
+        }
     }
 
     function enforceViewServerRestrictions() {

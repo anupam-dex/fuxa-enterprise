@@ -937,11 +937,25 @@ function startFuxa() {
                         db.all("SELECT name, value FROM devices;", (err, rows) => {
                             db.close();
                             if (err) return res.status(500).json({ error: err.message });
+                            
+                            const devTelemetry = (runtime.devices && typeof runtime.devices.getDevicesTelemetry === 'function')
+                                ? runtime.devices.getDevicesTelemetry()
+                                : {};
+
                             const devices = [];
                             for (const r of (rows || [])) {
                                 if (r.name === 'server') continue;
                                 try {
                                     const dev = JSON.parse(r.value);
+                                    const telem = devTelemetry[dev.id] || devTelemetry[dev.name] || {};
+                                    dev.telemetry = {
+                                        connected: !!telem.connected,
+                                        connectionStatus: telem.connectionStatus || 'OFF',
+                                        lastConnected: telem.lastConnected || null,
+                                        lastConnectedFormatted: telem.lastConnectedFormatted || (telem.lastConnected ? new Date(telem.lastConnected).toLocaleString() : 'Never connected'),
+                                        reconnectCount: typeof telem.reconnectCount === 'number' ? telem.reconnectCount : 0,
+                                        totalConnections: telem.totalConnections || 0
+                                    };
                                     devices.push(dev);
                                 } catch (_) {}
                             }
@@ -955,6 +969,18 @@ function startFuxa() {
                     } catch (e) {
                         return res.status(500).json({ error: e.message });
                     }
+                };
+
+                const handleDeviceTelemetry = (req, res) => {
+                    res.setHeader('Access-Control-Allow-Origin', '*');
+                    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+                    res.setHeader('Access-Control-Allow-Headers', '*');
+                    if (req.method === 'OPTIONS') return res.sendStatus(204);
+
+                    const telem = (runtime.devices && typeof runtime.devices.getDevicesTelemetry === 'function')
+                        ? runtime.devices.getDevicesTelemetry()
+                        : {};
+                    return res.json({ telemetry: telem, serverTime: Date.now() });
                 };
 
                 const handleAddTopologyDevice = (req, res) => {
@@ -1033,10 +1059,12 @@ function startFuxa() {
                 };
 
                 app.all('/api/storage/topology', handleStorageTopology);
+                app.get('/api/storage/device-telemetry', handleDeviceTelemetry);
                 app.post('/api/storage/add-topology-device', handleAddTopologyDevice);
                 app.post('/api/storage/delete-topology-device', handleDeleteTopologyDevice);
                 if (BASE_PATH) {
                     app.all(BASE_PATH + '/api/storage/topology', handleStorageTopology);
+                    app.get(BASE_PATH + '/api/storage/device-telemetry', handleDeviceTelemetry);
                     app.post(BASE_PATH + '/api/storage/add-topology-device', handleAddTopologyDevice);
                     app.post(BASE_PATH + '/api/storage/delete-topology-device', handleDeleteTopologyDevice);
                 }
