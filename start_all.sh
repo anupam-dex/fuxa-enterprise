@@ -95,9 +95,14 @@ echo "💡 To view live terminal logs and alarms: ./logs.sh"
 echo "💡 To filter only errors: ./logs.sh errors"
 echo "=========================================================================="
 
-if [ "$1" = "--live" ] || [ "$1" = "--logs" ] || [ "$1" = "-f" ]; then
-    "$SCRIPT_DIR/logs.sh"
-else
+if [ "$1" = "--daemon" ] || [ "$1" = "-d" ] || [ "$1" = "--no-logs" ]; then
+    echo "Running in daemon background mode. Logs directed to *.log files."
     trap "kill $BRIDGE_PID $MANAGER_PID $GATEWAY_PID 2>/dev/null || true; exit 0" INT TERM
     wait
+else
+    echo "⚡ Live SCADA Terminal Stream Active (Streaming Errors, Warnings & Routing):"
+    echo "   (Press Ctrl+C to stop all services)"
+    echo "--------------------------------------------------------------------------"
+    trap "kill $BRIDGE_PID $MANAGER_PID $GATEWAY_PID 2>/dev/null || true; exit 0" INT TERM
+    "$SCRIPT_DIR/logs.sh"
 fi

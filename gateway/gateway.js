@@ -21,6 +21,23 @@ const CLIENT_DIST_DIR = path.resolve(__dirname, '../fuxa/client/dist');
 
 let routingTable = {}; // subpath -> { port, plant, name }
 
+function getTs() {
+    return new Date().toISOString().replace('T', ' ').slice(0, 19);
+}
+
+function logInfo(msg) {
+    console.log(`\x1b[36m[${getTs()}] [INF] [OT-GATEWAY]\x1b[0m ${msg}`);
+}
+
+function logWarn(msg) {
+    console.warn(`\x1b[33;1m[${getTs()}] [WAR] [OT-GATEWAY]\x1b[0m ${msg}`);
+}
+
+function logError(msg, err) {
+    const errMsg = err ? (err.message || String(err)) : '';
+    console.error(`\x1b[31;1m[${getTs()}] [ERR] [OT-GATEWAY]\x1b[0m ${msg}${errMsg ? ' -> ' + errMsg : ''}`);
+}
+
 function loadRoutes() {
     try {
         const newTable = {};
@@ -57,7 +74,8 @@ loadRoutes();
     if (fs.existsSync(path.dirname(p))) {
         fs.watchFile(p, { interval: 1000 }, () => {
             loadRoutes();
-            console.log(`[Gateway] Routing table updated: ${Object.keys(routingTable).length} active routes.`);
+            const routesList = Object.entries(routingTable).map(([sp, t]) => `${sp} -> :${t.port} (${t.name})`).join(', ');
+            logInfo(`Routing table synced (${Object.keys(routingTable).length} active routes): ${routesList || 'none'}`);
         });
     }
 });
@@ -248,6 +266,7 @@ const server = http.createServer((req, res) => {
     }
 
     if (!target) {
+        logWarn(`404 NOT FOUND: "${req.method} ${req.url}" (Remote IP: ${req.socket.remoteAddress || '127.0.0.1'}) -> No view server route mapped in registry.`);
         res.writeHead(404, { 'Content-Type': 'text/html' });
         return res.end(`
             <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align:center; padding: 60px 20px; background: #0f172a; color: #f8fafc; min-height: 100vh; box-sizing: border-box;">
@@ -321,6 +340,7 @@ const server = http.createServer((req, res) => {
     });
 
     proxyReq.on('error', (err) => {
+        logError(`502 BAD GATEWAY: Failed to forward "${req.method} ${req.url}" to "${target.name}" on Port ${target.port}`, err);
         res.writeHead(502, { 'Content-Type': 'text/plain' });
         res.end(`SCADA Gateway 502: Instance on port ${target.port} (${target.name}) is unreachable.`);
     });
@@ -344,6 +364,7 @@ server.on('upgrade', (req, socket, head) => {
     }
 
     if (!target) {
+        logWarn(`WebSocket Upgrade Rejected: No target view server for "${req.url}" (Referer: ${req.headers['referer'] || 'none'})`);
         socket.destroy();
         return;
     }
@@ -379,7 +400,8 @@ server.on('upgrade', (req, socket, head) => {
         socket.pipe(proxySocket);
     });
 
-    proxySocket.on('error', () => {
+    proxySocket.on('error', (err) => {
+        logError(`WebSocket Connection Dropped: TCP disconnect to "${target.name}" on Port ${target.port}`, err);
         socket.destroy();
     });
 
