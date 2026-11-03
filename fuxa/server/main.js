@@ -851,29 +851,30 @@ function startFuxa() {
                         } catch (_) {}
                     }
 
-                    const http = require('http');
-                    const notifyServer = (targetPort, apiPath, postData) => {
-                        try {
-                            const dataStr = JSON.stringify(postData);
-                            const opt = {
-                                hostname: '127.0.0.1',
-                                port: targetPort,
-                                path: apiPath,
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Content-Length': Buffer.byteLength(dataStr)
-                                },
-                                timeout: 1000
-                            };
-                            const r = http.request(opt, () => {});
-                            r.on('error', () => {});
-                            r.write(dataStr);
-                            r.end();
-                        } catch (e) {}
-                    };
-                    notifyServer(9000, '/api/update-subpath', { port: currentPort, subpath: BASE_PATH || '/', name: newName });
-                    notifyServer(80, '/api/gateway/subpath', { port: currentPort, subpath: BASE_PATH || '/', name: newName });
+                    if (!req.body.from_manager) {
+                        const http = require('http');
+                        const notifyServer = (targetPort, apiPath, postData) => {
+                            try {
+                                const dataStr = JSON.stringify(postData);
+                                const opt = {
+                                    hostname: '127.0.0.1',
+                                    port: targetPort,
+                                    path: apiPath,
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Content-Length': Buffer.byteLength(dataStr)
+                                    },
+                                    timeout: 1000
+                                };
+                                const r = http.request(opt, () => {});
+                                r.on('error', () => {});
+                                r.write(dataStr);
+                                r.end();
+                            } catch (e) {}
+                        };
+                        notifyServer(9000, '/api/update-subpath', { port: currentPort, subpath: BASE_PATH || '/', name: newName, from_fuxa: true });
+                    }
 
                     return res.json({ success: true, name: newName, port: currentPort });
                 };

@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FUXA Soft OPC-UA Lab & Fault Injection Simulator</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <style>
+        .sim-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(560px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        @media (max-width: 900px) {
+            .sim-grid { grid-template-columns: 1fr; }
+        }
+        .sim-card {
+            background: var(--bg-card);
+            border: 1.5px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .sim-card:hover {
+            border-color: rgba(56, 189, 248, 0.45);
+            transform: translateY(-2px);
+        }
+        .sim-card.stopped {
+            opacity: 0.82;
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+        .sim-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+        .sim-title {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #f8fafc;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .sim-model {
+            font-size: 0.75rem;
+            color: #94a3b8;
+            margin-top: 2px;
+            font-family: var(--font-mono);
+        }
+        .endpoint-box {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 6px 10px;
+            margin-bottom: 14px;
+        }
+        .endpoint-text {
+            font-family: var(--font-mono);
+            font-size: 0.82rem;
+            color: #38bdf8;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .btn-copy {
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.2);
+            color: #cbd5e1;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.72rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .btn-copy:hover {
+            border-color: #38bdf8;
+            color: #38bdf8;
+        }
+        .sim-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+        .btn-sim {
+            font-size: 0.78rem;
+            font-weight: 600;
+            padding: 6px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: all 0.15s;
+        }
+        .btn-start { background: #16a34a; color: white; }
+        .btn-stop { background: #dc2626; color: white; }
+        .btn-drop { background: rgba(245, 158, 11, 0.15); border-color: #f59e0b; color: #fbbf24; }
+        .btn-glitch { background: rgba(236, 72, 153, 0.15); border-color: #ec4899; color: #f472b6; }
+        .btn-map { background: rgba(56, 189, 248, 0.15); border-color: #38bdf8; color: #38bdf8; }
+        
+        .tags-table-container {
+            max-height: 220px;
+            overflow-y: auto;
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 6px;
+            background: rgba(10, 13, 20, 0.6);
+        }
+        .tags-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.76rem;
+            text-align: left;
+        }
+        .tags-table th {
+            background: rgba(30, 41, 59, 0.8);
+            padding: 6px 10px;
+            color: #94a3b8;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .tags-table td {
+            padding: 5px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            color: #cbd5e1;
+            font-family: var(--font-mono);
+        }
+        .tag-val-highlight {
+            color: #34d399;
+            font-weight: 600;
+            display: inline-block;
+            transition: color 0.2s;
+        }
+        .tag-alarm-highlight {
+            color: #ef4444 !important;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+    <header class="top-nav">
+        <div class="brand">
+            <div class="logo-badge" style="background: linear-gradient(135deg, #7c3aed, #9333ea);">SOFT-OPC</div>
+            <div>
+                <h1>FUXA Soft OPC-UA Lab & Fault Injector</h1>
+                <p>5 Virtual Industrial PLCs &bull; 119 Dynamic Field Tags &bull; Network Fault Simulation</p>
+            </div>
+        </div>
+        <div class="header-stats">
+            <div class="stat-pill">
+                <span class="dot live" id="lab-indicator"></span>
+                <span>Lab Status: <strong id="stat-active-count">5 / 5 Active</strong></span>
+            </div>
+            <div class="stat-pill">
+                <span>Total Live Tags: <strong id="stat-total-tags">119</strong></span>
+            </div>
+            <button class="btn btn-secondary" onclick="startAllSims()" title="Start all 5 simulated servers">▶ Start All</button>
+            <button class="btn btn-secondary" onclick="stopAllSims()" title="Stop all 5 simulated servers">⏹ Stop All</button>
+            <button class="btn btn-primary" onclick="window.location.href='/'">← Return to Fleet Manager</button>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Live Topology Pipeline Banner -->
+        <section class="topology-banner" style="margin-top: 20px;">
+            <div class="pipe-step">
+                <div class="pipe-step-header">
+                    <span class="pipe-tag storage" style="background: #a855f7; color: #fff;">Sim 1: Paintshop Oven</span>
+                    <span class="dot live" id="dot-sim_1"></span>
+                </div>
+                <div class="pipe-title">Port :4850</div>
+                <div class="pipe-desc">24 Tags &bull; Zone Temp, Burner, Blowers</div>
+            </div>
+
+            <div class="pipe-step">
+                <div class="pipe-step-header">
+                    <span class="pipe-tag storage" style="background: #a855f7; color: #fff;">Sim 2: Boiler Powerhouse</span>
+                    <span class="dot live" id="dot-sim_2"></span>
+                </div>
+                <div class="pipe-title">Port :4851</div>
+                <div class="pipe-desc">23 Tags &bull; Steam, Pressure, Pumps</div>
+            </div>
+
+            <div class="pipe-step">
+                <div class="pipe-step-header">
+                    <span class="pipe-tag storage" style="background: #a855f7; color: #fff;">Sim 3: EMS Power Meter</span>
+                    <span class="dot live" id="dot-sim_3"></span>
+                </div>
+                <div class="pipe-title">Port :4852</div>
+                <div class="pipe-desc">25 Tags &bull; 3-Phase Voltage, kW, PF</div>
+            </div>
+
+            <div class="pipe-step">
+                <div class="pipe-step-header">
+                    <span class="pipe-tag storage" style="background: #a855f7; color: #fff;">Sim 4: Stamping Press</span>
+                    <span class="dot live" id="dot-sim_4"></span>
+                </div>
+                <div class="pipe-title">Port :4853</div>
+                <div class="pipe-desc">22 Tags &bull; Tonnage, Strokes, Die Safety</div>
+            </div>
+
+            <div class="pipe-step">
+                <div class="pipe-step-header">
+                    <span class="pipe-tag storage" style="background: #a855f7; color: #fff;">Sim 5: Robotic Paint Cell</span>
+                    <span class="dot live" id="dot-sim_5"></span>
+                </div>
+                <div class="pipe-title">Port :4854</div>
+                <div class="pipe-desc">25 Tags &bull; 6-Axis, Atomizer, HV, Booth</div>
+            </div>
+        </section>
+
+        <!-- Notification Toast -->
+        <div id="sim-toast" style="display: none; background: #064e3b; border: 1px solid #10b981; color: #ecfdf5; padding: 12px 18px; border-radius: 8px; margin-top: 16px; font-size: 0.88rem; box-shadow: 0 4px 12px rgba(0,0,0,0.3);"></div>
+
+        <!-- 5 Simulated Servers Grid -->
+        <div class="sim-grid" id="sim-cards-grid">
+            <!-- Injected by JavaScript -->
+        </div>
+    </main>
+
+    <script>
+        let simulatorStatus = {};
+        let liveTagsMap = {};
+
+        function showToast(msg, isError = false) {
+            const t = document.getElementById('sim-toast');
+            t.textContent = msg;
+            t.style.display = 'block';
+            t.style.background = isError ? '#7f1d1d' : '#064e3b';
+            t.style.borderColor = isError ? '#ef4444' : '#10b981';
+            setTimeout(() => { t.style.display = 'none'; }, 4000);
+        }
+
+        function copyEndpoint(endpoint, btn) {
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(endpoint);
+            } else {
+                const ta = document.createElement('textarea');
+                ta.value = endpoint;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+            }
+            btn.textContent = 'Copied! ✓';
+            btn.style.color = '#34d399';
+            btn.style.borderColor = '#34d399';
+            setTimeout(() => {
+                btn.textContent = 'Copy';
+                btn.style.color = '';
+                btn.style.borderColor = '';
+            }, 1800);
+        }
+
+        async function fetchStatus() {
+            try {
+                const res = await fetch('/api/simulator/status');
+                const data = await res.json();
+                simulatorStatus = data;
+                renderSimulators();
+            } catch (e) {
+                console.error("Failed to fetch simulator status:", e);
+            }
+        }
+
+        async function fetchLiveTags(serverId) {
+            try {
+                const res = await fetch(`/api/simulator/${serverId}/tags`);
+                const data = await res.json();
+                if (data.tags) {
+                    liveTagsMap[serverId] = data.tags;
+                    renderTagsTable(serverId);
+                }
+            } catch (e) {}
+        }
+
+        function renderSimulators() {
+            const grid = document.getElementById('sim-cards-grid');
+            if (!grid || !simulatorStatus.servers) return;
+
+            document.getElementById('stat-active-count').textContent = `${simulatorStatus.running_servers} / ${simulatorStatus.total_servers} Active`;
+            document.getElementById('stat-total-tags').textContent = simulatorStatus.total_tags || 119;
+
+            const labIndicator = document.getElementById('lab-indicator');
+            if (labIndicator) {
+                labIndicator.className = simulatorStatus.running_servers > 0 ? 'dot live' : 'dot stopped';
+            }
+
+            simulatorStatus.servers.forEach(s => {
+                const dot = document.getElementById(`dot-${s.id}`);
+                if (dot) dot.className = s.running ? 'dot live' : 'dot stopped';
+            });
+
+            grid.innerHTML = simulatorStatus.servers.map(s => {
+                const isRunning = s.running;
+                const statusBadge = isRunning
+                    ? `<span style="background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); padding: 3px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 700;">🟢 ONLINE</span>`
+                    : `<span style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); padding: 3px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 700;">🔴 STOPPED</span>`;
+
+                const glitchBadge = s.glitch_active
+                    ? `<span style="background: #dc2626; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.68rem; font-weight: 700; animation: blink 1s infinite;">⚠️ ALARM SPIKE</span>`
+                    : '';
+
+                return `
+                    <div class="sim-card ${isRunning ? '' : 'stopped'}" id="card-${s.id}">
+                        <div>
+                            <div class="sim-header">
+                                <div>
+                                    <div class="sim-title">
+                                        <span>${s.name}</span>
+                                        ${glitchBadge}
+                                    </div>
+                                    <div class="sim-model">${s.model} &bull; ${s.tag_count} Tags &bull; Plant ${s.plant} > Div ${s.division} > Line ${s.line}</div>
+                                </div>
+                                <div>${statusBadge}</div>
+                            </div>
+
+                            <div class="endpoint-box">
+                                <span style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">OPC-UA URL:</span>
+                                <span class="endpoint-text">${s.endpoint}</span>
+                                <button class="btn-copy" onclick="copyEndpoint('${s.endpoint}', this)">Copy</button>
+                            </div>
+
+                            <div class="sim-actions">
+                                ${isRunning 
+                                    ? `<button class="btn-sim btn-stop" onclick="toggleServer('${s.id}', false)">⏹ Stop Server</button>`
+                                    : `<button class="btn-sim btn-start" onclick="toggleServer('${s.id}', true)">▶ Start Server</button>`
+                                }
+                                <button class="btn-sim btn-drop" onclick="dropNetwork('${s.id}')" title="Cuts the TCP socket for 5 seconds then resumes automatically to test FUXA auto-reconnect!">
+                                    ⚡ 5s Network Drop
+                                </button>
+                                <button class="btn-sim btn-glitch" onclick="injectGlitch('${s.id}')" title="Injects high temperature / pressure alarm values for 6 seconds">
+                                    ⚠️ Trigger Alarm Glitch
+                                </button>
+                                <button class="btn-sim btn-map" onclick="addToStorage('${s.id}')" title="Automatically add this simulated PLC and its tags into Plant ${s.plant} Storage Server database!">
+                                    🔌 Add to Plant ${s.plant} Storage
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Live Real-Time Tag Stream Table -->
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <span style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;">Live Tag Telemetry Stream</span>
+                                <span style="font-size: 0.7rem; color: #64748b; font-family: var(--font-mono);">Sampling: 1000ms</span>
+                            </div>
+                            <div class="tags-table-container">
+                                <table class="tags-table" id="tags-table-${s.id}">
+                                    <thead>
+                                        <tr>
+                                            <th>Tag Name</th>
+                                            <th>Live Value</th>
+                                            <th>Unit</th>
+                                            <th>Type</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tags-body-${s.id}">
+                                        <tr><td colspan="4" style="text-align: center; color: #64748b;">Loading live tag stream...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Fetch live tags for all servers
+            simulatorStatus.servers.forEach(s => fetchLiveTags(s.id));
+        }
+
+        function renderTagsTable(serverId) {
+            const tbody = document.getElementById(`tags-body-${serverId}`);
+            if (!tbody || !liveTagsMap[serverId]) return;
+
+            const tags = liveTagsMap[serverId];
+            tbody.innerHTML = Object.values(tags).map(t => {
+                const isAlarm = (typeof t.value === 'boolean' && t.value && t.name.toLowerCase().includes('alarm')) || (typeof t.value === 'number' && t.value > 250 && t.name.includes('Temp'));
+                return `
+                    <tr>
+                        <td style="font-weight: 500;">${t.name}</td>
+                        <td class="${isAlarm ? 'tag-alarm-highlight' : 'tag-val-highlight'}">
+                            ${typeof t.value === 'boolean' ? (t.value ? 'TRUE' : 'FALSE') : t.value}
+                        </td>
+                        <td style="color: #94a3b8;">${t.unit || '-'}</td>
+                        <td style="color: #64748b;">${t.type}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        async function toggleServer(id, shouldStart) {
+            const action = shouldStart ? 'start' : 'stop';
+            try {
+                const res = await fetch(`/api/simulator/${id}/${action}`, { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(`Simulated server ${id} ${shouldStart ? 'started' : 'stopped'} successfully!`);
+                    await fetchStatus();
+                } else {
+                    showToast(`Error: ${data.error || 'Operation failed'}`, true);
+                }
+            } catch (e) {
+                showToast(`Network error: ${e.message}`, true);
+            }
+        }
+
+        async function dropNetwork(id) {
+            showToast(`⚡ Injected 5-second network drop on ${id}! Watch FUXA handle reconnection in terminal monitor...`);
+            try {
+                await fetch(`/api/simulator/${id}/drop?duration=5`, { method: 'POST' });
+                await fetchStatus();
+                setTimeout(fetchStatus, 5500);
+            } catch (e) {
+                showToast(`Error dropping network: ${e.message}`, true);
+            }
+        }
+
+        async function injectGlitch(id) {
+            showToast(`⚠️ Injected alarm spike glitch into ${id} for 6 seconds!`);
+            try {
+                await fetch(`/api/simulator/${id}/glitch?duration=6`, { method: 'POST' });
+                await fetchStatus();
+                fetchLiveTags(id);
+            } catch (e) {
+                showToast(`Error: ${e.message}`, true);
+            }
+        }
+
+        async function addToStorage(id) {
+            try {
+                const res = await fetch(`/api/simulator/${id}/add-to-storage`, { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(`✓ ${data.message}`);
+                } else {
+                    showToast(`Error: ${data.detail || data.error}`, true);
+                }
+            } catch (e) {
+                showToast(`Failed: ${e.message}`, true);
+            }
+        }
+
+        async function startAllSims() {
+            await fetch('/api/simulator/start-all', { method: 'POST' });
+            showToast("All 5 Soft OPC-UA Simulators started!");
+            await fetchStatus();
+        }
+
+        async function stopAllSims() {
+            await fetch('/api/simulator/stop-all', { method: 'POST' });
+            showToast("All 5 Soft OPC-UA Simulators stopped!");
+            await fetchStatus();
+        }
+
+        // Initialize and poll
+        fetchStatus();
+        setInterval(fetchStatus, 4000);
+        setInterval(() => {
+            if (simulatorStatus.servers) {
+                simulatorStatus.servers.forEach(s => {
+                    if (s.running) fetchLiveTags(s.id);
+                });
+            }
+        }, 1500);
+    </script>
+</body>
+</html>

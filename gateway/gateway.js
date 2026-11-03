@@ -113,8 +113,8 @@ function findTarget(reqUrl) {
         return bestMatch;
     }
 
-    // Only route root /, /static/, and manager /api/ to Fleet Manager
-    if (pathname === '/' || pathname.startsWith('/static/') || pathname.startsWith('/api/')) {
+    // Route root /, /simulator, /softopc, /static/, and manager /api/ to Fleet Manager
+    if (pathname === '/' || pathname === '/simulator' || pathname === '/softopc' || pathname.startsWith('/static/') || pathname.startsWith('/api/')) {
         return { port: FLEET_MANAGER_PORT, prefix: '', name: 'FleetManager' };
     }
 
@@ -204,21 +204,6 @@ const server = http.createServer((req, res) => {
                         fs.renameSync(tmpPath, p);
                     } catch (e) {}
                 });
-
-                // Notify Fleet Manager (Port 9000)
-                try {
-                    const notifyReq = http.request({
-                        hostname: '127.0.0.1',
-                        port: 9000,
-                        path: '/api/update-subpath',
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        timeout: 1000
-                    }, () => {});
-                    notifyReq.on('error', () => {});
-                    notifyReq.write(JSON.stringify({ subpath: newSubpath, port: targetPort, name: data.name }));
-                    notifyReq.end();
-                } catch (e) {}
 
                 console.log(`[Gateway] Registered live subpath: ${newSubpath} -> Port ${targetPort}`);
                 res.writeHead(200, { 'Content-Type': 'application/json' });

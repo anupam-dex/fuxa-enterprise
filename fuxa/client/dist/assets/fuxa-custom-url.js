@@ -40,6 +40,7 @@
     } catch (e) {}
 
     let liveProjectName = localStorage.getItem('fuxa_project_name') || '';
+    let currentInstancePort = null;
     let isMutating = false;
 
     // Permanently suppress plugins notice popup via global CSS
@@ -129,12 +130,29 @@
     }
 
     function getTargetPort() {
+        if (currentInstancePort && currentInstancePort > 1024) return currentInstancePort;
         if (window.location.port && window.location.port !== '80' && window.location.port !== '443') {
             const p = parseInt(window.location.port, 10);
-            localStorage.setItem('fuxa_target_port', p);
-            return p;
+            if (!isNaN(p) && p > 1024) {
+                currentInstancePort = p;
+                localStorage.setItem('fuxa_target_port', p);
+                return p;
+            }
         }
-        return parseInt(localStorage.getItem('fuxa_target_port') || '9610', 10);
+        const pInput = document.querySelector('app-app-settings input[numberonly], app-app-settings .tab-system input');
+        if (pInput && pInput.value) {
+            const pVal = parseInt(pInput.value, 10);
+            if (!isNaN(pVal) && pVal > 1024) {
+                currentInstancePort = pVal;
+                return pVal;
+            }
+        }
+        const saved = parseInt(localStorage.getItem('fuxa_target_port') || '0', 10);
+        if (saved && saved > 1024) {
+            currentInstancePort = saved;
+            return saved;
+        }
+        return 9610;
     }
 
     function getFormattedHeadline(rawName) {
@@ -443,6 +461,10 @@
             const res = await fetch('api/project-name');
             if (res.ok) {
                 const data = await res.json();
+                if (data.port) {
+                    currentInstancePort = data.port;
+                    localStorage.setItem('fuxa_target_port', data.port);
+                }
                 if (data.name) {
                     liveProjectName = data.name;
                     localStorage.setItem('fuxa_project_name', liveProjectName);
@@ -455,6 +477,10 @@
                 const res2 = await fetch('/api/project-name');
                 if (res2.ok) {
                     const data2 = await res2.json();
+                    if (data2.port) {
+                        currentInstancePort = data2.port;
+                        localStorage.setItem('fuxa_target_port', data2.port);
+                    }
                     if (data2.name) {
                         liveProjectName = data2.name;
                         localStorage.setItem('fuxa_project_name', liveProjectName);
@@ -507,16 +533,6 @@
             });
             console.log(`[FUXA-Manager] Synced project name to Fleet Manager: ${cleanName}`);
         } catch (e3) {}
-
-        // 3. Sync to Gateway (Port 80)
-        try {
-            await fetch(`http://${host}/api/gateway/subpath`, {
-                method: 'POST',
-                mode: 'cors',
-                headers: { 'Content-Type': 'application/json' },
-                body: payload
-            });
-        } catch (e4) {}
     }
 
     async function syncSubpathToGateway(newSubpath, customPort, customName) {
@@ -546,20 +562,7 @@
             } catch (e2) {}
         }
 
-        // 2. Update Gateway (Port 80)
-        try {
-            await fetch(`http://${host}/api/gateway/subpath`, {
-                method: 'POST',
-                mode: 'cors',
-                headers: { 'Content-Type': 'application/json' },
-                body: payload
-            });
-            console.log(`[FUXA-Gateway] Registered route on Port 80: ${newSubpath} -> Port ${port}`);
-        } catch (e) {
-            console.warn('[FUXA-Gateway] Gateway sync warning:', e);
-        }
-
-        // 3. Update Fleet Manager (Port 9000)
+        // 2. Update Fleet Manager (Port 9000) - Fleet Manager will update Gateway atomically
         try {
             await fetch(`http://${host}:9000/api/update-subpath`, {
                 method: 'POST',
@@ -2165,38 +2168,40 @@
             });
         }
 
-        function copyTextToClipboard(text) {
+        function copyText(inputElem, text) {
+            let copied = false;
             if (navigator.clipboard && window.isSecureContext) {
-                return navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+                navigator.clipboard.writeText(text).catch(() => {});
             }
-            return fallbackCopy(text);
-        }
-
-        function fallbackCopy(text) {
-            return new Promise((resolve) => {
+            if (inputElem) {
+                try {
+                    inputElem.focus();
+                    inputElem.select();
+                    inputElem.setSelectionRange(0, 99999);
+                    copied = document.execCommand('copy');
+                } catch (e) {}
+            }
+            if (!copied) {
                 try {
                     const textArea = document.createElement("textarea");
                     textArea.value = text;
                     textArea.style.position = "fixed";
-                    textArea.style.left = "-999999px";
-                    textArea.style.top = "-999999px";
-                    document.body.appendChild(textArea);
+                    textArea.style.opacity = "0";
+                    // Append inside dialog container so Angular FocusTrap does not reject it
+                    (dialog || document.body).appendChild(textArea);
                     textArea.focus();
                     textArea.select();
-                    const successful = document.execCommand('copy');
-                    document.body.removeChild(textArea);
-                    resolve(successful);
-                } catch (err) {
-                    console.error('Fallback copy failed', err);
-                    resolve(false);
-                }
-            });
+                    copied = document.execCommand('copy');
+                    textArea.remove();
+                } catch (e) {}
+            }
+            return copied;
         }
 
-        copyViewBtn.addEventListener('click', async (e) => {
+        copyViewBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            await copyTextToClipboard(viewInput.value);
+            copyText(viewInput, viewInput.value);
             copyViewBtn.textContent = 'Copied! ✓';
             copyViewBtn.style.borderColor = '#2e7d32';
             copyViewBtn.style.color = '#4ade80';
@@ -2207,10 +2212,10 @@
             }, 2000);
         });
 
-        copyEditorBtn.addEventListener('click', async (e) => {
+        copyEditorBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            await copyTextToClipboard(editorInput.value);
+            copyText(editorInput, editorInput.value);
             copyEditorBtn.textContent = 'Copied! ✓';
             copyEditorBtn.style.borderColor = '#2e7d32';
             copyEditorBtn.style.color = '#4ade80';
