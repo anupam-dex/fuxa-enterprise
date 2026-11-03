@@ -1057,32 +1057,740 @@
         return false;
     }
 
-    function renderStorageServerMasterBanner() {
-        if (!window.location.pathname.includes('/device')) return;
-        const workPanel = document.querySelector('app-device .work-panel, app-device');
-        if (workPanel && !document.getElementById('fuxa-storage-master-banner')) {
-            const b = document.createElement('div');
-            b.id = 'fuxa-storage-master-banner';
-            b.style.cssText = 'background: #064e3b; border: 1.5px solid #10b981; border-left: 6px solid #10b981; border-radius: 6px; padding: 14px 20px; margin: 44px 20px 14px 20px; display: flex; align-items: flex-start; gap: 14px; color: #ecfdf5; font-size: 13.5px; font-family: system-ui, -apple-system, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,0.3);';
-            b.innerHTML = `
-                <span style="font-size: 24px; line-height: 1;">🟢</span>
-                <div style="flex: 1; line-height: 1.55;">
-                    <strong style="color: #6ee7b7; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; display: block; margin-bottom: 4px;">
-                        Central Storage Master &bull; Full Field Device Acquisition Mode
-                    </strong>
-                    <div style="color: #a7f3d0; font-size: 13px;">
-                        All native field protocols are enabled (Siemens S7, Modbus TCP/RTU, OPC-UA Client, BACnet, EtherNet/IP, MQTT). Field connections added here automatically log tag history into InfluxDB and become available for all Plant View Servers.
+    let storageTopologyData = null;
+    let topoSelectedDivision = 'all';
+    let topoSelectedLine = 'all';
+    let topoSearchQuery = '';
+    let isFetchingTopology = false;
+
+    const TOPO_DIVISIONS = {
+        1: "Body Shop",
+        2: "Stamping",
+        3: "Assembly",
+        4: "Quality & Inspection",
+        5: "Utility & Boiler",
+        6: "Paintshop",
+        7: "Robotics & Automation",
+        8: "Material Handling"
+    };
+
+    async function fetchStorageTopology() {
+        if (isFetchingTopology) return;
+        isFetchingTopology = true;
+        try {
+            let res = await fetch('api/storage/topology').catch(() => null);
+            if (!res || !res.ok) {
+                res = await fetch('/api/storage/topology').catch(() => null);
+            }
+            if (res && res.ok) {
+                storageTopologyData = await res.json();
+                updateStorageTopologyDOM();
+            }
+        } catch (e) {
+            console.error('[STORAGE-TOPOLOGY] Error loading topology:', e);
+        } finally {
+            isFetchingTopology = false;
+        }
+    }
+
+    function openAddTopologyDeviceModal(preDivision = null, preLine = null) {
+        let existingModal = document.getElementById('fuxa-add-topo-device-modal');
+        if (existingModal) existingModal.remove();
+
+        const plantId = (storageTopologyData && storageTopologyData.plant_id) ? storageTopologyData.plant_id : 9;
+        const plantName = (storageTopologyData && storageTopologyData.plant_name) ? storageTopologyData.plant_name : `Plant ${plantId}`;
+        const divisions = (storageTopologyData && storageTopologyData.divisions) ? storageTopologyData.divisions : TOPO_DIVISIONS;
+
+        const defaultDiv = preDivision || (topoSelectedDivision !== 'all' ? topoSelectedDivision : '6');
+        const defaultLine = preLine || (topoSelectedLine !== 'all' ? topoSelectedLine : '1');
+
+        const modal = document.createElement('div');
+        modal.id = 'fuxa-add-topo-device-modal';
+        modal.style.cssText = 'position: fixed; inset: 0; background: rgba(15, 23, 42, 0.78); backdrop-filter: blur(4px); z-index: 10000; display: flex; align-items: center; justify-content: center; font-family: system-ui, -apple-system, sans-serif;';
+
+        modal.innerHTML = `
+            <div style="background: #1e293b; border: 1.5px solid rgba(255,255,255,0.14); border-radius: 12px; width: 620px; max-width: 95vw; max-height: 90vh; overflow-y: auto; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7); color: #f8fafc; padding: 24px 28px;">
+                <!-- Modal Header -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    <div>
+                        <div style="font-size: 1.15rem; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 8px;">
+                            <span>🔌</span> Add Device to Plant Topology
+                        </div>
+                        <div style="font-size: 0.82rem; color: #94a3b8; margin-top: 2px;">
+                            Map field PLC or gateway to its plant division and line in Central Storage
+                        </div>
+                    </div>
+                    <button id="topo-modal-close" style="background: transparent; border: none; font-size: 22px; color: #94a3b8; cursor: pointer; padding: 4px 8px; border-radius: 4px;">&times;</button>
+                </div>
+
+                <!-- Step 1: Topological Location -->
+                <div style="background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 14px 16px; margin-bottom: 18px;">
+                    <span style="font-size: 0.75rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.8px; color: #38bdf8; display: block; margin-bottom: 10px;">
+                        1. Plant Topology Placement
+                    </span>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                        <div>
+                            <label style="display: block; font-size: 0.8rem; color: #cbd5e1; margin-bottom: 4px; font-weight: 500;">Plant</label>
+                            <input readonly value="${plantName}" style="width: 100%; height: 34px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 5px; color: #94a3b8; padding: 0 10px; font-size: 0.85rem; box-sizing: border-box;" />
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.8rem; color: #cbd5e1; margin-bottom: 4px; font-weight: 500;">Division</label>
+                            <select id="topo-input-division" style="width: 100%; height: 34px; background: #0f172a; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 5px; color: #f8fafc; padding: 0 8px; font-size: 0.85rem; box-sizing: border-box; cursor: pointer;">
+                                ${Object.entries(divisions).map(([k, name]) => `<option value="${k}" ${String(k) === String(defaultDiv) ? 'selected' : ''}>Div ${k}: ${name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.8rem; color: #cbd5e1; margin-bottom: 4px; font-weight: 500;">Production Line</label>
+                            <select id="topo-input-line" style="width: 100%; height: 34px; background: #0f172a; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 5px; color: #f8fafc; padding: 0 8px; font-size: 0.85rem; box-sizing: border-box; cursor: pointer;">
+                                <option value="1" ${String(defaultLine) === '1' ? 'selected' : ''}>Line 1 (e.g. Line 1)</option>
+                                <option value="2" ${String(defaultLine) === '2' ? 'selected' : ''}>Line 2 (e.g. Line 2)</option>
+                                <option value="3" ${String(defaultLine) === '3' ? 'selected' : ''}>Line 3 (e.g. Line 3)</option>
+                                <option value="4" ${String(defaultLine) === '4' ? 'selected' : ''}>Line 4 (e.g. Line 4)</option>
+                                <option value="5" ${String(defaultLine) === '5' ? 'selected' : ''}>Line 5 (e.g. Line 5)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.8rem; color: #cbd5e1; margin-bottom: 4px; font-weight: 500;">Topological Path Preview</label>
+                            <div id="topo-path-preview" style="height: 34px; line-height: 34px; padding: 0 10px; font-family: monospace; font-size: 0.82rem; color: #34d399; background: rgba(52, 211, 153, 0.1); border: 1px dashed rgba(52, 211, 153, 0.3); border-radius: 5px; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                P${plantId} > Div ${defaultDiv} > Line ${defaultLine}
+                            </div>
+                        </div>
                     </div>
                 </div>
-            `;
-            workPanel.prepend(b);
+
+                <!-- Step 2: Device & Protocol -->
+                <div style="background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 14px 16px; margin-bottom: 22px;">
+                    <span style="font-size: 0.75rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.8px; color: #38bdf8; display: block; margin-bottom: 10px;">
+                        2. Field Device & Protocol Settings
+                    </span>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+                        <div>
+                            <label style="display: block; font-size: 0.8rem; color: #cbd5e1; margin-bottom: 4px; font-weight: 500;">Device Name</label>
+                            <input id="topo-input-devname" type="text" value="P${plantId}_D${defaultDiv}_L${defaultLine}_PLC" placeholder="e.g. Oven_Burner_PLC" style="width: 100%; height: 34px; background: #0f172a; border: 1px solid rgba(255,255,255,0.2); border-radius: 5px; color: #f8fafc; padding: 0 10px; font-size: 0.85rem; box-sizing: border-box;" />
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.8rem; color: #cbd5e1; margin-bottom: 4px; font-weight: 500;">Acquisition Protocol</label>
+                            <select id="topo-input-protocol" style="width: 100%; height: 34px; background: #0f172a; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 5px; color: #f8fafc; padding: 0 8px; font-size: 0.85rem; box-sizing: border-box; cursor: pointer;">
+                                <option value="SiemensS7">🔌 Siemens S7 (S7-300 / 400 / 1200 / 1500)</option>
+                                <option value="Modbus">📟 Modbus TCP (Ethernet)</option>
+                                <option value="OPCUA">⚡ OPC-UA Client (opc.tcp://)</option>
+                                <option value="MQTT">📡 MQTT Client (Broker / Topic)</option>
+                                <option value="EthernetIP">🖧 EtherNet/IP (Allen-Bradley / Omron)</option>
+                                <option value="BACnet">🌐 BACnet IP</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Dynamic Protocol Parameters -->
+                    <div id="topo-proto-fields" style="background: rgba(0,0,0,0.25); border-radius: 6px; padding: 12px; margin-top: 10px;">
+                        <!-- Injected dynamically by JS -->
+                    </div>
+                </div>
+
+                <!-- Footer Actions -->
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button id="topo-modal-cancel" type="button" style="padding: 9px 18px; font-size: 0.85rem; font-weight: 500; border: 1px solid rgba(255,255,255,0.2); background: transparent; color: #cbd5e1; border-radius: 6px; cursor: pointer;">
+                        Cancel
+                    </button>
+                    <button id="topo-modal-submit" type="button" style="padding: 9px 24px; font-size: 0.85rem; font-weight: 600; border: none; background: linear-gradient(135deg, #10b981, #059669); color: #fff; border-radius: 6px; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);">
+                        Add Device to Plant Topology
+                    </button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        const divSelect = modal.querySelector('#topo-input-division');
+        const lineSelect = modal.querySelector('#topo-input-line');
+        const pathPreview = modal.querySelector('#topo-path-preview');
+        const nameInput = modal.querySelector('#topo-input-devname');
+        const protoSelect = modal.querySelector('#topo-input-protocol');
+        const protoFields = modal.querySelector('#topo-proto-fields');
+
+        function updatePathAndName() {
+            const d = divSelect.value;
+            const l = lineSelect.value;
+            const divLabel = divisions[d] || `Div ${d}`;
+            pathPreview.textContent = `P${plantId} > ${divLabel} > Line ${l}`;
+            if (nameInput.dataset.manual !== 'true') {
+                nameInput.value = `P${plantId}_D${d}_L${l}_PLC`;
+            }
         }
+
+        nameInput.addEventListener('input', () => {
+            nameInput.dataset.manual = 'true';
+        });
+
+        divSelect.addEventListener('change', updatePathAndName);
+        lineSelect.addEventListener('change', updatePathAndName);
+
+        function renderProtocolFields() {
+            const proto = protoSelect.value;
+            if (proto === 'SiemensS7') {
+                protoFields.innerHTML = `
+                    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px;">
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 2px;">PLC IP Address</label>
+                            <input id="proto-s7-host" type="text" value="192.168.1.10" style="width: 100%; height: 30px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: #fff; padding: 0 8px; font-size: 0.8rem; box-sizing: border-box;" />
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 2px;">Port</label>
+                            <input id="proto-s7-port" type="number" value="102" style="width: 100%; height: 30px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: #fff; padding: 0 8px; font-size: 0.8rem; box-sizing: border-box;" />
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 2px;">Rack</label>
+                            <input id="proto-s7-rack" type="number" value="0" style="width: 100%; height: 30px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: #fff; padding: 0 8px; font-size: 0.8rem; box-sizing: border-box;" />
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 2px;">Slot</label>
+                            <input id="proto-s7-slot" type="number" value="2" style="width: 100%; height: 30px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: #fff; padding: 0 8px; font-size: 0.8rem; box-sizing: border-box;" />
+                        </div>
+                    </div>
+                `;
+            } else if (proto === 'Modbus') {
+                protoFields.innerHTML = `
+                    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px;">
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 2px;">Modbus Slave IP</label>
+                            <input id="proto-mb-host" type="text" value="192.168.1.20" style="width: 100%; height: 30px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: #fff; padding: 0 8px; font-size: 0.8rem; box-sizing: border-box;" />
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 2px;">Port</label>
+                            <input id="proto-mb-port" type="number" value="502" style="width: 100%; height: 30px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: #fff; padding: 0 8px; font-size: 0.8rem; box-sizing: border-box;" />
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 2px;">Slave ID</label>
+                            <input id="proto-mb-slave" type="number" value="1" style="width: 100%; height: 30px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: #fff; padding: 0 8px; font-size: 0.8rem; box-sizing: border-box;" />
+                        </div>
+                    </div>
+                `;
+            } else if (proto === 'OPCUA') {
+                protoFields.innerHTML = `
+                    <div>
+                        <label style="display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 2px;">OPC-UA Endpoint URL</label>
+                        <input id="proto-opc-url" type="text" value="opc.tcp://127.0.0.1:4845/fuxa/server/" style="width: 100%; height: 30px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: #fff; padding: 0 8px; font-size: 0.8rem; box-sizing: border-box;" />
+                    </div>
+                `;
+            } else if (proto === 'MQTT') {
+                protoFields.innerHTML = `
+                    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px;">
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 2px;">Broker URL</label>
+                            <input id="proto-mqtt-url" type="text" value="mqtt://127.0.0.1:1883" style="width: 100%; height: 30px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: #fff; padding: 0 8px; font-size: 0.8rem; box-sizing: border-box;" />
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 2px;">Topic Prefix</label>
+                            <input id="proto-mqtt-topic" type="text" value="tvs/plant9/#" style="width: 100%; height: 30px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: #fff; padding: 0 8px; font-size: 0.8rem; box-sizing: border-box;" />
+                        </div>
+                    </div>
+                `;
+            } else if (proto === 'EthernetIP') {
+                protoFields.innerHTML = `
+                    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px;">
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 2px;">PLC IP Address</label>
+                            <input id="proto-eip-host" type="text" value="192.168.1.30" style="width: 100%; height: 30px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: #fff; padding: 0 8px; font-size: 0.8rem; box-sizing: border-box;" />
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 2px;">Port</label>
+                            <input id="proto-eip-port" type="number" value="44818" style="width: 100%; height: 30px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: #fff; padding: 0 8px; font-size: 0.8rem; box-sizing: border-box;" />
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 2px;">Slot</label>
+                            <input id="proto-eip-slot" type="number" value="0" style="width: 100%; height: 30px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: #fff; padding: 0 8px; font-size: 0.8rem; box-sizing: border-box;" />
+                        </div>
+                    </div>
+                `;
+            } else {
+                protoFields.innerHTML = `
+                    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px;">
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 2px;">BACnet IP Address</label>
+                            <input id="proto-bac-host" type="text" value="192.168.1.40" style="width: 100%; height: 30px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: #fff; padding: 0 8px; font-size: 0.8rem; box-sizing: border-box;" />
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 2px;">Port</label>
+                            <input id="proto-bac-port" type="number" value="47808" style="width: 100%; height: 30px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: #fff; padding: 0 8px; font-size: 0.8rem; box-sizing: border-box;" />
+                        </div>
+                        <div>
+                            <label style="display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 2px;">Device ID</label>
+                            <input id="proto-bac-id" type="number" value="1001" style="width: 100%; height: 30px; background: #0f172a; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; color: #fff; padding: 0 8px; font-size: 0.8rem; box-sizing: border-box;" />
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        protoSelect.addEventListener('change', renderProtocolFields);
+        renderProtocolFields();
+
+        // Close handlers
+        modal.querySelector('#topo-modal-close').onclick = () => modal.remove();
+        modal.querySelector('#topo-modal-cancel').onclick = () => modal.remove();
+
+        // Submit handler
+        const submitBtn = modal.querySelector('#topo-modal-submit');
+        submitBtn.onclick = async () => {
+            const devName = (nameInput.value || '').trim();
+            if (!devName) {
+                alert('Please enter a valid Device Name');
+                return;
+            }
+
+            const pType = protoSelect.value;
+            const divVal = parseInt(divSelect.value, 10);
+            const lineVal = parseInt(lineSelect.value, 10);
+
+            let property = {};
+            if (pType === 'SiemensS7') {
+                property = {
+                    address: modal.querySelector('#proto-s7-host')?.value || '192.168.1.10',
+                    port: parseInt(modal.querySelector('#proto-s7-port')?.value || '102', 10),
+                    rack: parseInt(modal.querySelector('#proto-s7-rack')?.value || '0', 10),
+                    slot: parseInt(modal.querySelector('#proto-s7-slot')?.value || '2', 10)
+                };
+            } else if (pType === 'Modbus') {
+                property = {
+                    address: modal.querySelector('#proto-mb-host')?.value || '192.168.1.20',
+                    port: parseInt(modal.querySelector('#proto-mb-port')?.value || '502', 10),
+                    slaveid: parseInt(modal.querySelector('#proto-mb-slave')?.value || '1', 10)
+                };
+            } else if (pType === 'OPCUA') {
+                property = {
+                    address: modal.querySelector('#proto-opc-url')?.value || 'opc.tcp://127.0.0.1:4845',
+                    options: { securityMode: 'None', securityPolicy: 'None' }
+                };
+            } else if (pType === 'MQTT') {
+                property = {
+                    url: modal.querySelector('#proto-mqtt-url')?.value || 'mqtt://127.0.0.1:1883',
+                    topic: modal.querySelector('#proto-mqtt-topic')?.value || 'tvs/plant9/#'
+                };
+            } else if (pType === 'EthernetIP') {
+                property = {
+                    address: modal.querySelector('#proto-eip-host')?.value || '192.168.1.30',
+                    port: parseInt(modal.querySelector('#proto-eip-port')?.value || '44818', 10),
+                    slot: parseInt(modal.querySelector('#proto-eip-slot')?.value || '0', 10)
+                };
+            } else {
+                property = {
+                    address: modal.querySelector('#proto-bac-host')?.value || '192.168.1.40',
+                    port: parseInt(modal.querySelector('#proto-bac-port')?.value || '47808', 10),
+                    deviceid: parseInt(modal.querySelector('#proto-bac-id')?.value || '1001', 10)
+                };
+            }
+
+            submitBtn.textContent = 'Adding to Topology...';
+            submitBtn.style.opacity = '0.7';
+
+            try {
+                const payload = JSON.stringify({
+                    name: devName,
+                    type: pType,
+                    property: property,
+                    topology: {
+                        plant: plantId,
+                        division: divVal,
+                        line: lineVal
+                    },
+                    enabled: true
+                });
+
+                let res = await fetch('api/storage/add-topology-device', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: payload
+                }).catch(() => null);
+
+                if (!res || !res.ok) {
+                    res = await fetch('/api/storage/add-topology-device', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: payload
+                    }).catch(() => null);
+                }
+
+                if (res && res.ok) {
+                    modal.remove();
+                    await fetchStorageTopology();
+                } else {
+                    const err = res ? await res.json().catch(() => ({})) : {};
+                    alert('Failed to add device: ' + (err.error || 'Server error'));
+                    submitBtn.textContent = 'Add Device to Plant Topology';
+                    submitBtn.style.opacity = '1';
+                }
+            } catch (err) {
+                alert('Error adding device: ' + err.message);
+                submitBtn.textContent = 'Add Device to Plant Topology';
+                submitBtn.style.opacity = '1';
+            }
+        };
+    }
+
+    async function removeTopologyDevice(deviceId, deviceName) {
+        if (!confirm(`Are you sure you want to remove device "${deviceName}" from the Plant Topology?`)) return;
+        try {
+            const payload = JSON.stringify({ id: deviceId });
+            let res = await fetch('api/storage/delete-topology-device', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: payload
+            }).catch(() => null);
+
+            if (!res || !res.ok) {
+                res = await fetch('/api/storage/delete-topology-device', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: payload
+                }).catch(() => null);
+            }
+
+            if (res && res.ok) {
+                await fetchStorageTopology();
+            } else {
+                alert('Failed to delete device');
+            }
+        } catch (e) {
+            alert('Error deleting device: ' + e.message);
+        }
+    }
+
+    function updateStorageTopologyDOM() {
+        const hub = document.getElementById('fuxa-storage-topological-hub');
+        if (!hub || !storageTopologyData) return;
+
+        const plantId = storageTopologyData.plant_id || 9;
+        const plantName = storageTopologyData.plant_name || `Plant ${plantId}`;
+        const divisions = storageTopologyData.divisions || TOPO_DIVISIONS;
+        const rawDevices = storageTopologyData.devices || [];
+
+        // Telemetry counters
+        const totalDevs = rawDevices.length;
+        let totalTags = 0;
+        rawDevices.forEach(d => {
+            totalTags += Object.keys(d.tags || {}).length;
+        });
+
+        // 1. Division Pills
+        const divPillsContainer = hub.querySelector('#topo-div-pills');
+        if (divPillsContainer) {
+            let pillsHtml = `
+                <button class="topo-pill ${topoSelectedDivision === 'all' ? 'active' : ''}" onclick="window.__setTopoDiv('all')">
+                    All Divisions (${totalDevs})
+                </button>
+            `;
+            Object.entries(divisions).forEach(([dId, dName]) => {
+                const count = rawDevices.filter(d => {
+                    const devDiv = d.topology ? String(d.topology.division) : '';
+                    return devDiv === String(dId);
+                }).length;
+                pillsHtml += `
+                    <button class="topo-pill ${topoSelectedDivision === String(dId) ? 'active' : ''}" onclick="window.__setTopoDiv('${dId}')">
+                        ${dName} (${count})
+                    </button>
+                `;
+            });
+            divPillsContainer.innerHTML = pillsHtml;
+        }
+
+        // 2. Line Filter Pills
+        const linePillsContainer = hub.querySelector('#topo-line-pills');
+        if (linePillsContainer) {
+            let linePillsHtml = `
+                <button class="topo-pill ${topoSelectedLine === 'all' ? 'active' : ''}" onclick="window.__setTopoLine('all')">
+                    All Lines
+                </button>
+            `;
+            [1, 2, 3, 4, 5].forEach(lNum => {
+                const count = rawDevices.filter(d => {
+                    const devLine = d.topology ? String(d.topology.line) : '';
+                    const matchDiv = (topoSelectedDivision === 'all') || (d.topology && String(d.topology.division) === String(topoSelectedDivision));
+                    return matchDiv && devLine === String(lNum);
+                }).length;
+                linePillsHtml += `
+                    <button class="topo-pill ${topoSelectedLine === String(lNum) ? 'active' : ''}" onclick="window.__setTopoLine('${lNum}')">
+                        Line ${lNum} (${count})
+                    </button>
+                `;
+            });
+            linePillsContainer.innerHTML = linePillsHtml;
+        }
+
+        // 3. Filter devices
+        let filteredDevices = rawDevices;
+        if (topoSelectedDivision !== 'all') {
+            filteredDevices = filteredDevices.filter(d => d.topology && String(d.topology.division) === String(topoSelectedDivision));
+        }
+        if (topoSelectedLine !== 'all') {
+            filteredDevices = filteredDevices.filter(d => d.topology && String(d.topology.line) === String(topoSelectedLine));
+        }
+        if (topoSearchQuery) {
+            const q = topoSearchQuery.toLowerCase();
+            filteredDevices = filteredDevices.filter(d => 
+                (d.name && d.name.toLowerCase().includes(q)) ||
+                (d.type && d.type.toLowerCase().includes(q)) ||
+                (d.property && (JSON.stringify(d.property).toLowerCase().includes(q)))
+            );
+        }
+
+        // 4. Render Grouped Topological Tree / Hierarchy
+        const treeContainer = hub.querySelector('#topo-cards-tree');
+        if (!treeContainer) return;
+
+        if (filteredDevices.length === 0) {
+            treeContainer.innerHTML = `
+                <div style="background: rgba(15, 23, 42, 0.4); border: 1px dashed rgba(255,255,255,0.15); border-radius: 8px; padding: 32px 20px; text-align: center; color: #94a3b8; margin-top: 10px;">
+                    <div style="font-size: 2rem; margin-bottom: 8px;">🔌</div>
+                    <div style="font-size: 1rem; font-weight: 600; color: #f1f5f9; margin-bottom: 4px;">No field devices found in this topological branch</div>
+                    <div style="font-size: 0.82rem; margin-bottom: 16px;">
+                        ${topoSelectedDivision !== 'all' ? `Division ${divisions[topoSelectedDivision] || topoSelectedDivision} currently has no field devices assigned.` : 'Get started by adding your first field PLC, Modbus, or OPC-UA connection to the plant topology.'}
+                    </div>
+                    <button onclick="window.__openAddTopoDeviceModal()" style="padding: 8px 18px; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 6px; font-size: 0.82rem; font-weight: 600; cursor: pointer; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);">
+                        + Add Device to This Node
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        // Group devices by division and line
+        const grouped = {};
+        filteredDevices.forEach(d => {
+            const divId = (d.topology && d.topology.division) ? String(d.topology.division) : '6';
+            const lineId = (d.topology && d.topology.line) ? String(d.topology.line) : '1';
+            grouped[divId] = grouped[divId] || {};
+            grouped[divId][lineId] = grouped[divId][lineId] || [];
+            grouped[divId][lineId].push(d);
+        });
+
+        let treeHtml = '';
+        Object.entries(grouped).forEach(([dId, linesMap]) => {
+            const divTitle = divisions[dId] || `Division ${dId}`;
+            treeHtml += `
+                <div style="margin-bottom: 22px; background: rgba(15, 23, 42, 0.35); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 16px 18px;">
+                    <!-- Division Header -->
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.08);">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 1.1rem;">📁</span>
+                            <span style="font-size: 0.95rem; font-weight: 700; color: #38bdf8;">Division ${dId}: ${divTitle}</span>
+                        </div>
+                        <span style="font-size: 0.72rem; color: #94a3b8; background: rgba(255,255,255,0.06); padding: 2px 8px; border-radius: 4px; font-family: monospace;">
+                            Plant ${plantId} &bull; ${Object.values(linesMap).reduce((acc, cur) => acc + cur.length, 0)} Devices
+                        </span>
+                    </div>
+            `;
+
+            Object.entries(linesMap).forEach(([lId, devList]) => {
+                treeHtml += `
+                    <div style="margin-bottom: 14px; padding-left: 14px; border-left: 2px solid rgba(56, 189, 248, 0.4);">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                            <span style="font-size: 0.85rem; font-weight: 600; color: #6ee7b7; display: flex; align-items: center; gap: 6px;">
+                                <span>🔹</span> Line ${lId}
+                            </span>
+                            <button onclick="window.__openAddTopoDeviceModal('${dId}', '${lId}')" style="background: transparent; border: 1px solid rgba(52, 211, 153, 0.3); color: #34d399; font-size: 0.72rem; padding: 2px 8px; border-radius: 4px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='rgba(52, 211, 153, 0.15)'" onmouseout="this.style.background='transparent'">
+                                + Add Device to Line ${lId}
+                            </button>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px;">
+                `;
+
+                devList.forEach(dev => {
+                    const tagCount = Object.keys(dev.tags || {}).length;
+                    const endpoint = dev.property ? (dev.property.address || dev.property.url || (dev.property.ip ? `${dev.property.ip}:${dev.property.port || ''}` : 'Configured')) : 'Standard';
+                    
+                    let protoBadge = `<span style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 600;">${dev.type}</span>`;
+                    if (dev.type === 'OPCUA') protoBadge = `<span style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 600;">⚡ OPC-UA</span>`;
+                    else if (dev.type === 'SiemensS7') protoBadge = `<span style="background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 600;">🔌 Siemens S7</span>`;
+                    else if (dev.type === 'Modbus') protoBadge = `<span style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 600;">📟 Modbus TCP</span>`;
+                    else if (dev.type === 'MQTT') protoBadge = `<span style="background: rgba(236, 72, 153, 0.15); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.3); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 600;">📡 MQTT</span>`;
+
+                    treeHtml += `
+                        <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: transform 0.2s, border-color 0.2s;" onmouseover="this.style.borderColor='rgba(56, 189, 248, 0.5)'" onmouseout="this.style.borderColor='rgba(255,255,255,0.1)'">
+                            <div>
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                                    <div style="font-weight: 700; font-size: 0.88rem; color: #f1f5f9; display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis;">
+                                        <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #10b981; box-shadow: 0 0 6px #10b981;"></span>
+                                        <span title="${dev.name}">${dev.name}</span>
+                                    </div>
+                                    ${protoBadge}
+                                </div>
+                                <div style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 4px; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${endpoint}">
+                                    📍 ${endpoint}
+                                </div>
+                                <div style="font-size: 0.72rem; color: #64748b; margin-bottom: 10px;">
+                                    🏷️ Node: Plant ${plantId} &bull; Div ${dId} &bull; Line ${lId}
+                                </div>
+                            </div>
+
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06);">
+                                <span style="font-size: 0.72rem; color: #34d399; font-weight: 600;">
+                                    ${tagCount > 0 ? `✓ ${tagCount} Tags Active` : 'Ready to map tags'}
+                                </span>
+                                <button onclick="window.__removeTopoDev('${dev.id}', '${dev.name}')" style="background: transparent; border: none; color: #ef4444; font-size: 0.75rem; cursor: pointer; padding: 2px 6px; border-radius: 4px; opacity: 0.75; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.75'" title="Remove device from Plant Topology">
+                                    🗑️ Remove
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                treeHtml += `
+                        </div>
+                    </div>
+                `;
+            });
+
+            treeHtml += `
+                </div>
+            `;
+        });
+
+        treeContainer.innerHTML = treeHtml;
+    }
+
+    // Expose global bridge functions for onclick handlers
+    window.__setTopoDiv = (divId) => {
+        topoSelectedDivision = divId;
+        updateStorageTopologyDOM();
+    };
+
+    window.__setTopoLine = (lineId) => {
+        topoSelectedLine = lineId;
+        updateStorageTopologyDOM();
+    };
+
+    window.__openAddTopoDeviceModal = (divId, lineId) => {
+        openAddTopologyDeviceModal(divId, lineId);
+    };
+
+    window.__removeTopoDev = (id, name) => {
+        removeTopologyDevice(id, name);
+    };
+
+    function renderStorageServerTopologicalView() {
+        if (!window.location.pathname.includes('/device')) return;
+        const workPanel = document.querySelector('app-device .work-panel, app-device');
+        if (!workPanel) return;
+
+        if (document.getElementById('fuxa-storage-topological-hub')) {
+            return;
+        }
+
+        // Remove legacy simple banner if present
+        const oldBanner = document.getElementById('fuxa-storage-master-banner');
+        if (oldBanner) oldBanner.remove();
+
+        const hub = document.createElement('div');
+        hub.id = 'fuxa-storage-topological-hub';
+        hub.style.cssText = 'background: #0f172a; border: 1.5px solid rgba(56, 189, 248, 0.35); border-radius: 12px; padding: 20px 24px; margin: 40px 20px 20px 20px; font-family: system-ui, -apple-system, sans-serif; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.4); color: #f8fafc;';
+
+        hub.innerHTML = `
+            <!-- Top Hero Header -->
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                <div>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+                        <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #10b981; box-shadow: 0 0 10px #10b981;"></span>
+                        <span style="font-size: 1.15rem; font-weight: 700; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.5px;">
+                            Central Storage Master &bull; Plant Topological Acquisition Hub
+                        </span>
+                    </div>
+                    <div style="font-size: 0.85rem; color: #94a3b8; max-width: 800px; line-height: 1.45;">
+                        Full field device acquisition mode active. Add Siemens S7, Modbus TCP, OPC-UA, MQTT, EtherNet/IP, or BACnet field devices organized into the plant topology (Plant &rarr; Division &rarr; Line). Ingested tags automatically log history into InfluxDB and sync to all matching HMI View Servers.
+                    </div>
+                </div>
+                <button id="btn-open-topo-add-modal" style="flex-shrink: 0; display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; font-size: 0.86rem; font-weight: 700; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 6px; cursor: pointer; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4); transition: transform 0.15s, box-shadow 0.15s;" onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 6px 18px rgba(16, 185, 129, 0.5)'" onmouseout="this.style.transform='none'; this.style.boxShadow='0 4px 14px rgba(16, 185, 129, 0.4)'">
+                    <span style="font-size: 16px; font-weight: bold;">+</span> Add Device to Topology
+                </button>
+            </div>
+
+            <!-- Topological Filters Bar -->
+            <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px 16px; margin-bottom: 18px;">
+                <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #38bdf8;">Divisions:</span>
+                        <div id="topo-div-pills" style="display: flex; flex-wrap: wrap; gap: 6px;">
+                            <!-- Injected by JS -->
+                        </div>
+                    </div>
+                    <div>
+                        <input id="topo-search-input" type="text" placeholder="Filter devices by name, IP, protocol..." style="width: 240px; height: 30px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.15); border-radius: 5px; color: #f8fafc; padding: 0 10px; font-size: 0.8rem; outline: none;" />
+                    </div>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06);">
+                    <span style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #6ee7b7;">Lines:</span>
+                    <div id="topo-line-pills" style="display: flex; flex-wrap: wrap; gap: 6px;">
+                        <!-- Injected by JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Topological Cards Tree / Hierarchy -->
+            <div id="topo-cards-tree">
+                <div style="text-align: center; padding: 24px; color: #94a3b8; font-size: 0.85rem;">
+                    Loading Plant Topology Infrastructure...
+                </div>
+            </div>
+        `;
+
+        // Inject scoped styles for pills
+        if (!document.getElementById('fuxa-topo-scoped-styles')) {
+            const style = document.createElement('style');
+            style.id = 'fuxa-topo-scoped-styles';
+            style.textContent = `
+                .topo-pill {
+                    background: rgba(255, 255, 255, 0.05);
+                    border: 1px solid rgba(255, 255, 255, 0.12);
+                    color: #cbd5e1;
+                    padding: 3px 10px;
+                    border-radius: 5px;
+                    font-size: 0.75rem;
+                    font-weight: 500;
+                    cursor: pointer;
+                    transition: all 0.15s ease;
+                }
+                .topo-pill:hover {
+                    background: rgba(56, 189, 248, 0.15);
+                    border-color: rgba(56, 189, 248, 0.35);
+                    color: #f1f5f9;
+                }
+                .topo-pill.active {
+                    background: #0284c7;
+                    border-color: #38bdf8;
+                    color: #ffffff;
+                    font-weight: 600;
+                    box-shadow: 0 2px 6px rgba(2, 132, 199, 0.4);
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        workPanel.prepend(hub);
+
+        // Hook Add Button
+        hub.querySelector('#btn-open-topo-add-modal').onclick = () => {
+            openAddTopologyDeviceModal();
+        };
+
+        // Hook Search Input
+        const searchInput = hub.querySelector('#topo-search-input');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                topoSearchQuery = e.target.value.trim();
+                updateStorageTopologyDOM();
+            });
+        }
+
+        // Fetch fresh topology from storage server backend
+        fetchStorageTopology();
     }
 
     function enforceViewServerRestrictions() {
         if (isStorageServer()) {
-            renderStorageServerMasterBanner();
+            renderStorageServerTopologicalView();
             return;
+        }
         }
         if (isMutating) return;
         isMutating = true;

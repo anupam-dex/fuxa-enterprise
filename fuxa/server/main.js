@@ -888,6 +888,158 @@ function startFuxa() {
                     app.post(BASE_PATH + '/api/custom-subpath', handleCustomSubpath);
                 }
 
+                const DIVISIONS_MAP = {
+                    1: "Body Shop",
+                    2: "Stamping",
+                    3: "Assembly",
+                    4: "Quality & Inspection",
+                    5: "Utility & Boiler",
+                    6: "Paintshop",
+                    7: "Robotics & Automation",
+                    8: "Material Handling"
+                };
+
+                const PLANTS_MAP = {
+                    1: "Plant 1 - Foundry & Powerhouse",
+                    2: "Plant 2 - Stamping & Press",
+                    3: "Plant 3 - Body & Assembly",
+                    4: "Plant 4 - Powertrain & Engine",
+                    9: "Plant 9 - Paintshop Complex"
+                };
+
+                const getDeducePlantId = () => {
+                    const currentPort = settings.serverPort || settings.uiPort;
+                    if (currentPort === 5100) return 1;
+                    if (currentPort === 5200) return 2;
+                    if (currentPort === 5300) return 3;
+                    if (currentPort === 5400) return 4;
+                    if (currentPort === 5900) return 9;
+                    const pStr = String(currentPort);
+                    return (pStr.length >= 4) ? parseInt(pStr[0], 10) : 9;
+                };
+
+                const handleStorageTopology = (req, res) => {
+                    res.setHeader('Access-Control-Allow-Origin', '*');
+                    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+                    res.setHeader('Access-Control-Allow-Headers', '*');
+                    if (req.method === 'OPTIONS') return res.sendStatus(204);
+
+                    const plantId = getDeducePlantId();
+                    const dbFile = path.join(settings.workDir, 'project.fuxap.db');
+                    if (!fs.existsSync(dbFile)) {
+                        return res.json({ plant_id: plantId, plant_name: PLANTS_MAP[plantId] || `Plant ${plantId}`, divisions: DIVISIONS_MAP, devices: [] });
+                    }
+
+                    try {
+                        const sqlite3 = require('sqlite3').verbose();
+                        const db = new sqlite3.Database(dbFile);
+                        db.all("SELECT name, value FROM devices;", (err, rows) => {
+                            db.close();
+                            if (err) return res.status(500).json({ error: err.message });
+                            const devices = [];
+                            for (const r of (rows || [])) {
+                                if (r.name === 'server') continue;
+                                try {
+                                    const dev = JSON.parse(r.value);
+                                    devices.push(dev);
+                                } catch (_) {}
+                            }
+                            return res.json({
+                                plant_id: plantId,
+                                plant_name: PLANTS_MAP[plantId] || `Plant ${plantId}`,
+                                divisions: DIVISIONS_MAP,
+                                devices: devices
+                            });
+                        });
+                    } catch (e) {
+                        return res.status(500).json({ error: e.message });
+                    }
+                };
+
+                const handleAddTopologyDevice = (req, res) => {
+                    res.setHeader('Access-Control-Allow-Origin', '*');
+                    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+                    res.setHeader('Access-Control-Allow-Headers', '*');
+                    if (req.method === 'OPTIONS') return res.sendStatus(204);
+
+                    const { name, type, property, topology, enabled } = req.body || {};
+                    if (!name || !type) {
+                        return res.status(400).json({ error: 'Device name and type are required' });
+                    }
+
+                    const plantId = getDeducePlantId();
+                    const divId = topology && topology.division ? parseInt(topology.division, 10) : 6;
+                    const lineId = topology && topology.line ? parseInt(topology.line, 10) : 1;
+                    const devId = `dev_${type.toLowerCase().replace(/[^a-z0-9]/g, '')}_p${plantId}_d${divId}_l${lineId}_${Date.now()}`;
+
+                    const newDevice = {
+                        id: devId,
+                        name: name.trim(),
+                        type: type,
+                        enabled: enabled !== false,
+                        property: property || {},
+                        tags: {},
+                        topology: {
+                            plant: plantId,
+                            division: divId,
+                            division_name: DIVISIONS_MAP[divId] || `Division ${divId}`,
+                            line: lineId,
+                            line_name: `Line ${lineId}`
+                        }
+                    };
+
+                    const dbFile = path.join(settings.workDir, 'project.fuxap.db');
+                    try {
+                        const sqlite3 = require('sqlite3').verbose();
+                        const db = new sqlite3.Database(dbFile);
+                        db.run(
+                            "INSERT OR REPLACE INTO devices (name, value, connection, cntid, cntpwd) VALUES (?, ?, ?, ?, ?);",
+                            [devId, JSON.stringify(newDevice), type, '', ''],
+                            function (err) {
+                                db.close();
+                                if (err) return res.status(500).json({ error: err.message });
+                                logger.info(`[STORAGE-TOPOLOGY] Successfully added field device "${name}" (${type}) to Plant ${plantId} > Div ${divId} > Line ${lineId}`);
+                                return res.json({ success: true, device: newDevice });
+                            }
+                        );
+                    } catch (e) {
+                        return res.status(500).json({ error: e.message });
+                    }
+                };
+
+                const handleDeleteTopologyDevice = (req, res) => {
+                    res.setHeader('Access-Control-Allow-Origin', '*');
+                    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+                    res.setHeader('Access-Control-Allow-Headers', '*');
+                    if (req.method === 'OPTIONS') return res.sendStatus(204);
+
+                    const { id } = req.body || {};
+                    if (!id) return res.status(400).json({ error: 'Device id is required' });
+
+                    const dbFile = path.join(settings.workDir, 'project.fuxap.db');
+                    try {
+                        const sqlite3 = require('sqlite3').verbose();
+                        const db = new sqlite3.Database(dbFile);
+                        db.run("DELETE FROM devices WHERE name = ?;", [id], function (err) {
+                            db.close();
+                            if (err) return res.status(500).json({ error: err.message });
+                            logger.info(`[STORAGE-TOPOLOGY] Deleted field device: ${id}`);
+                            return res.json({ success: true, id: id });
+                        });
+                    } catch (e) {
+                        return res.status(500).json({ error: e.message });
+                    }
+                };
+
+                app.all('/api/storage/topology', handleStorageTopology);
+                app.post('/api/storage/add-topology-device', handleAddTopologyDevice);
+                app.post('/api/storage/delete-topology-device', handleDeleteTopologyDevice);
+                if (BASE_PATH) {
+                    app.all(BASE_PATH + '/api/storage/topology', handleStorageTopology);
+                    app.post(BASE_PATH + '/api/storage/add-topology-device', handleAddTopologyDevice);
+                    app.post(BASE_PATH + '/api/storage/delete-topology-device', handleDeleteTopologyDevice);
+                }
+
                 const STATUTORY_WARNING = "Adding connections facility is no longer supported; redirect to storage server instance for adding field PLC or gateway device. Once they added in respective storage server, device will be listed to the view page server automatically.";
                 const blockPluginsHandler = (req, res) => res.status(403).json({ error: "plugins_disabled", message: STATUTORY_WARNING });
 
