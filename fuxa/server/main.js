@@ -679,7 +679,9 @@ function startFuxa() {
                                 if (!fs.existsSync(path.dirname(rf))) {
                                     fs.mkdirSync(path.dirname(rf), { recursive: true });
                                 }
-                                fs.writeFileSync(rf, JSON.stringify(reg, null, 2));
+                                const tmpFile = rf + '.tmp';
+                                fs.writeFileSync(tmpFile, JSON.stringify(reg, null, 2));
+                                fs.renameSync(tmpFile, rf);
                             } catch (err) {}
                         }
 
@@ -841,7 +843,9 @@ function startFuxa() {
                                             break;
                                         }
                                     }
-                                    fs.writeFileSync(rf, JSON.stringify(reg, null, 2));
+                                    const tmpFile = rf + '.tmp';
+                                    fs.writeFileSync(tmpFile, JSON.stringify(reg, null, 2));
+                                    fs.renameSync(tmpFile, rf);
                                 }
                             }
                         } catch (_) {}

@@ -199,7 +199,9 @@ const server = http.createServer((req, res) => {
                         if (!fs.existsSync(path.dirname(p))) {
                             fs.mkdirSync(path.dirname(p), { recursive: true });
                         }
-                        fs.writeFileSync(p, JSON.stringify(reg, null, 2));
+                        const tmpPath = p + '.tmp';
+                        fs.writeFileSync(tmpPath, JSON.stringify(reg, null, 2));
+                        fs.renameSync(tmpPath, p);
                     } catch (e) {}
                 });
 

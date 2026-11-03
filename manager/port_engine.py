@@ -42,26 +42,67 @@ class PortEngine:
     def _load_registry(self):
         data = self._default_registry()
 
-        # 1. Load from manager/registry.json
-        if os.path.exists(self.registry_path):
+        # Helper to safely load JSON
+        def safe_load(fpath):
+            if not os.path.exists(fpath):
+                return None
             try:
-                with open(self.registry_path, "r") as f:
-                    reg = json.load(f)
-                    if "plants" in reg: data["plants"] = reg["plants"]
-                    if "divisions" in reg: data["divisions"] = reg["divisions"]
-                    if "instances" in reg: data["instances"].update(reg["instances"])
+                with open(fpath, "r") as f:
+                    content = f.read().strip()
+                    if content:
+                        return json.loads(content)
             except Exception:
                 pass
+            return None
+
+        # 1. Load from manager/registry.json
+        reg = safe_load(self.registry_path)
+        if reg:
+            if "plants" in reg: data["plants"] = reg["plants"]
+            if "divisions" in reg: data["divisions"] = reg["divisions"]
+            if "instances" in reg: data["instances"].update(reg["instances"])
 
         # 2. Merge from protected persistent file (instances/registry.json, never overwritten by git)
-        if os.path.exists(self.persistent_path):
+        saved = safe_load(self.persistent_path)
+        if saved and "instances" in saved and saved["instances"]:
+            data["instances"].update(saved["instances"])
+
+        # 3. Deduplicate by port to prevent dual registration (e.g. port_9610 and fuxa_p9_d6_l1_9610)
+        port_to_inst = {}
+        for inst_id, inst in list(data["instances"].items()):
+            p_num = inst.get("port")
+            if not p_num:
+                continue
             try:
-                with open(self.persistent_path, "r") as f:
-                    saved = json.load(f)
-                    if "instances" in saved and saved["instances"]:
-                        data["instances"].update(saved["instances"])
+                p_num = int(p_num)
             except Exception:
-                pass
+                continue
+            
+            p_str = str(p_num)
+            plant_id = int(inst.get("plant") or (p_str[0] if len(p_str) >= 4 else 9))
+            div_id = int(inst.get("division") or (p_str[1] if len(p_str) >= 4 else 6))
+            line_id = int(inst.get("line") or (p_str[2] if len(p_str) >= 4 else 1))
+            canonical_id = f"fuxa_p{plant_id}_d{div_id}_l{line_id}_{p_num}"
+
+            if p_num not in port_to_inst:
+                inst["id"] = canonical_id
+                inst["port"] = p_num
+                inst["plant"] = plant_id
+                inst["division"] = div_id
+                inst["line"] = line_id
+                port_to_inst[p_num] = (canonical_id, inst)
+            else:
+                # Merge duplicate info into canonical instance
+                c_id, existing = port_to_inst[p_num]
+                if inst.get("subpath") and not existing.get("subpath"):
+                    existing["subpath"] = inst["subpath"]
+                if inst.get("name") and ("Line" in existing.get("name", "") or not existing.get("name")):
+                    existing["name"] = inst["name"]
+                if inst.get("work_dir") and not existing.get("work_dir"):
+                    existing["work_dir"] = inst["work_dir"]
+
+        # Rebuild instances map with only canonical keys
+        data["instances"] = {c_id: inst for p, (c_id, inst) in port_to_inst.items()}
 
         # 3. Auto-discover existing instance directories on disk
         instances_dir = os.path.join(os.path.dirname(__file__), "..", "instances")
@@ -153,18 +194,23 @@ class PortEngine:
 
         return data
 
-    def _save_registry(self):
-        # Save to manager/registry.json
-        with open(self.registry_path, "w") as f:
-            json.dump(self.registry, f, indent=2)
-
-        # Also save to git-ignored instances/registry.json
+    def _atomic_write_json(self, fpath, obj):
         try:
-            os.makedirs(os.path.dirname(self.persistent_path), exist_ok=True)
-            with open(self.persistent_path, "w") as f:
-                json.dump(self.registry, f, indent=2)
+            os.makedirs(os.path.dirname(os.path.abspath(fpath)), exist_ok=True)
+            tmp_path = fpath + ".tmp"
+            with open(tmp_path, "w") as f:
+                json.dump(obj, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, fpath)
         except Exception:
             pass
+
+    def _save_registry(self):
+        # Save to manager/registry.json
+        self._atomic_write_json(self.registry_path, self.registry)
+        # Also save to git-ignored instances/registry.json
+        self._atomic_write_json(self.persistent_path, self.registry)
 
     def is_port_in_use(self, port: int) -> bool:
         """Checks if a port is listening on the host network"""

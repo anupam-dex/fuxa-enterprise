@@ -36,13 +36,15 @@ for log_file in "$SCRIPT_DIR/opcua_bridge.log" "$SCRIPT_DIR/manager.log" "$SCRIP
     fi
 done
 
-# Force kill any lingering processes on critical ports 80, 9000, 4845
-echo "Notice: Ensuring ports 80, 9000, 4845 are free..."
-fuser -k 80/tcp 9000/tcp 4845/tcp 2>/dev/null || true
-sudo fuser -k 80/tcp 9000/tcp 4845/tcp 2>/dev/null || true
+# Force kill any lingering processes on all SCADA ports (80, 9000, 4845, Storage 5x00, View 96xx)
+echo "Notice: Ensuring all SCADA ports (80, 9000, 4845, 5100-5900, 9610-9630) are clean..."
+fuser -k 80/tcp 9000/tcp 4845/tcp 5100/tcp 5200/tcp 5300/tcp 5400/tcp 5900/tcp 9610/tcp 9611/tcp 9620/tcp 9621/tcp 9630/tcp 2>/dev/null || true
+sudo fuser -k 80/tcp 9000/tcp 4845/tcp 5100/tcp 5200/tcp 5300/tcp 5400/tcp 5900/tcp 9610/tcp 9611/tcp 9620/tcp 9621/tcp 9630/tcp 2>/dev/null || true
 pkill -9 -f "uvicorn" 2>/dev/null || true
 pkill -9 -f "opcua_bridge.py" 2>/dev/null || true
 pkill -9 -f "gateway.js" 2>/dev/null || true
+pkill -9 -f "server/main.js" 2>/dev/null || true
+pkill -9 -f "FUXA" 2>/dev/null || true
 sleep 1
 
 if [ ! -d "$SCRIPT_DIR/fuxa/server/node_modules" ]; then

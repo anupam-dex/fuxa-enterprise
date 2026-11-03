@@ -79,8 +79,13 @@ def on_startup():
 
     # 2. Automatically restore, sync tags and re-launch all existing view servers
     instances = port_engine.get_all_instances()
+    started_ports = set()
     for inst_id, inst in list(instances.items()):
         port = inst.get("port")
+        if not port or port in started_ports:
+            continue
+        started_ports.add(port)
+
         work_dir = inst.get("work_dir") or os.path.join(INSTANCES_DIR, f"port_{port}")
         subpath = inst.get("subpath") or f"/p{inst.get('plant', 9)}/div{inst.get('division', 1)}/l{inst.get('line', 1)}"
         plant_id = inst.get("plant", 9)
@@ -93,7 +98,7 @@ def on_startup():
         except Exception as e:
             logger.warning(f"Could not auto-sync tags for {inst_id}: {e}")
 
-        if port and not port_engine.is_port_in_use(port):
+        if not port_engine.is_port_in_use(port):
             logger.info(f"Auto-restoring View Server {inst_id} on Port {port} ({subpath})...")
             pid = _launch_fuxa_instance(inst_id, port, work_dir, subpath)
             inst["pid"] = pid
@@ -117,54 +122,36 @@ class UpdateSubpathRequest(BaseModel):
 def update_subpath(req: UpdateSubpathRequest):
     new_sub = "/" + req.subpath.strip("/")
     instances = port_engine.get_all_instances()
-    found = False
     target_work_dir = None
     target_plant = 9
     port_str = str(req.port)
     deduced_plant = int(port_str[0]) if len(port_str) >= 4 else 9
     deduced_div = int(port_str[1]) if len(port_str) >= 4 else 6
     deduced_line = int(port_str[2]) if len(port_str) >= 4 else 1
+    canonical_id = f"fuxa_p{deduced_plant}_d{deduced_div}_l{deduced_line}_{req.port}"
 
-    for inst_id, inst in instances.items():
-        if inst.get("port") == req.port:
-            inst["subpath"] = new_sub
-            inst["editor_url"] = f"{new_sub}/editor"
-            inst["home_url"] = f"{new_sub}/home"
-            if req.name:
-                inst["name"] = req.name
-            if not inst.get("plant"):
-                inst["plant"] = deduced_plant
-            if not inst.get("division"):
-                inst["division"] = deduced_div
-            if not inst.get("line"):
-                inst["line"] = deduced_line
-            target_plant = inst.get("plant", deduced_plant)
-            target_work_dir = inst.get("work_dir") or os.path.join(INSTANCES_DIR, f"port_{req.port}")
-            inst["work_dir"] = target_work_dir
-            inst["status"] = "RUNNING" if port_engine.is_port_in_use(req.port) else "STOPPED"
-            port_engine.register_instance(inst_id, inst)
-            found = True
-            break
+    # Clean up any legacy or duplicate keys for this port
+    for iid, i in list(instances.items()):
+        if i.get("port") == req.port and iid != canonical_id:
+            port_engine.unregister_instance(iid)
 
-    if not found:
-        inst_id = f"fuxa_p{deduced_plant}_d{deduced_div}_l{deduced_line}_{req.port}"
-        target_work_dir = os.path.join(INSTANCES_DIR, f"port_{req.port}")
-        target_plant = deduced_plant
-        inst = {
-            "id": inst_id,
-            "port": req.port,
-            "plant": deduced_plant,
-            "division": deduced_div,
-            "line": deduced_line,
-            "subpath": new_sub,
-            "name": req.name or f"Custom Line ({new_sub})",
-            "work_dir": target_work_dir,
-            "editor_url": f"{new_sub}/editor",
-            "home_url": f"{new_sub}/home",
-            "status": "RUNNING" if port_engine.is_port_in_use(req.port) else "STOPPED"
-        }
-        port_engine.register_instance(inst_id, inst)
-        found = True
+    instances = port_engine.get_all_instances()
+    inst = instances.get(canonical_id) or {}
+    inst["id"] = canonical_id
+    inst["port"] = req.port
+    inst["subpath"] = new_sub
+    inst["editor_url"] = f"{new_sub}/editor"
+    inst["home_url"] = f"{new_sub}/home"
+    if req.name:
+        inst["name"] = req.name
+    inst["plant"] = inst.get("plant") or deduced_plant
+    inst["division"] = inst.get("division") or deduced_div
+    inst["line"] = inst.get("line") or deduced_line
+    target_plant = inst["plant"]
+    target_work_dir = inst.get("work_dir") or os.path.join(INSTANCES_DIR, f"port_{req.port}")
+    inst["work_dir"] = target_work_dir
+    inst["status"] = "RUNNING" if port_engine.is_port_in_use(req.port) else "STOPPED"
+    port_engine.register_instance(canonical_id, inst)
 
     # Persist project name directly inside FUXA SQLite DB
     if req.name and target_work_dir:
@@ -173,7 +160,7 @@ def update_subpath(req: UpdateSubpathRequest):
         # Notify FUXA instance process if running
         try:
             import requests
-            requests.post(f"http://127.0.0.1:{req.port}/api/project-name", credentials=None, json={"name": req.name}, timeout=0.3)
+            requests.post(f"http://127.0.0.1:{req.port}/api/project-name", json={"name": req.name}, timeout=0.5)
         except Exception:
             pass
 
@@ -184,7 +171,7 @@ def update_subpath(req: UpdateSubpathRequest):
     except Exception:
         pass
 
-    return {"success": True, "subpath": new_sub, "found": found}
+    return {"success": True, "subpath": new_sub, "instance": inst}
 
 @app.post("/api/instances/{instance_id}/rename")
 def rename_instance(instance_id: str, req: dict):
@@ -316,6 +303,10 @@ def create_project(req: CreateProjectRequest):
 
 def _launch_fuxa_instance(instance_id: str, port: int, work_dir: str, subpath: str):
     """Starts the FUXA instance process with BASE_PATH and userDir"""
+    if port and port_engine.is_port_in_use(port):
+        logger.warning(f"Port {port} is already active and listening; skipping duplicate launch for {instance_id}.")
+        return None
+
     # Normalize work_dir to local machine
     if not os.path.exists(work_dir):
         work_dir = os.path.join(INSTANCES_DIR, f"port_{port}")

@@ -474,7 +474,12 @@
         localStorage.setItem('fuxa_project_name', cleanName);
         updateHeaderBadge(cleanName);
 
-        const payload = JSON.stringify({ name: cleanName });
+        const currentPort = getTargetPort();
+        const currentSub = getBasePath();
+        const payload = JSON.stringify({ name: cleanName, port: currentPort, subpath: currentSub });
+        const host = window.location.hostname || '127.0.0.1';
+
+        // 1. Save to FUXA Server DB
         try {
             await fetch('api/project-name', {
                 method: 'POST',
@@ -491,6 +496,27 @@
                 });
             } catch (e2) {}
         }
+
+        // 2. Sync to Fleet Manager (Port 9000) so Fleet Manager card updates immediately
+        try {
+            await fetch(`http://${host}:9000/api/update-subpath`, {
+                method: 'POST',
+                mode: 'cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: payload
+            });
+            console.log(`[FUXA-Manager] Synced project name to Fleet Manager: ${cleanName}`);
+        } catch (e3) {}
+
+        // 3. Sync to Gateway (Port 80)
+        try {
+            await fetch(`http://${host}/api/gateway/subpath`, {
+                method: 'POST',
+                mode: 'cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: payload
+            });
+        } catch (e4) {}
     }
 
     async function syncSubpathToGateway(newSubpath, customPort, customName) {
@@ -1432,23 +1458,59 @@
             });
         }
 
-        copyViewBtn.addEventListener('click', () => {
-            navigator.clipboard.writeText(viewInput.value);
+        function copyTextToClipboard(text) {
+            if (navigator.clipboard && window.isSecureContext) {
+                return navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+            }
+            return fallbackCopy(text);
+        }
+
+        function fallbackCopy(text) {
+            return new Promise((resolve) => {
+                try {
+                    const textArea = document.createElement("textarea");
+                    textArea.value = text;
+                    textArea.style.position = "fixed";
+                    textArea.style.left = "-999999px";
+                    textArea.style.top = "-999999px";
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    const successful = document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    resolve(successful);
+                } catch (err) {
+                    console.error('Fallback copy failed', err);
+                    resolve(false);
+                }
+            });
+        }
+
+        copyViewBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            await copyTextToClipboard(viewInput.value);
             copyViewBtn.textContent = 'Copied! ✓';
             copyViewBtn.style.borderColor = '#2e7d32';
+            copyViewBtn.style.color = '#4ade80';
             setTimeout(() => {
                 copyViewBtn.textContent = 'Copy';
-                copyViewBtn.style.borderColor = '#aaa';
+                copyViewBtn.style.borderColor = 'rgba(128, 128, 128, 0.4)';
+                copyViewBtn.style.color = 'inherit';
             }, 2000);
         });
 
-        copyEditorBtn.addEventListener('click', () => {
-            navigator.clipboard.writeText(editorInput.value);
+        copyEditorBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            await copyTextToClipboard(editorInput.value);
             copyEditorBtn.textContent = 'Copied! ✓';
             copyEditorBtn.style.borderColor = '#2e7d32';
+            copyEditorBtn.style.color = '#4ade80';
             setTimeout(() => {
                 copyEditorBtn.textContent = 'Copy';
-                copyEditorBtn.style.borderColor = '#aaa';
+                copyEditorBtn.style.borderColor = 'rgba(128, 128, 128, 0.4)';
+                copyEditorBtn.style.color = 'inherit';
             }, 2000);
         });
     }
