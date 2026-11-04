@@ -36,17 +36,19 @@ describe('Security - settings disclosure', () => {
         expect = chai.expect;
     });
 
-    it('always removes passwords, credentials and the JWT secret', () => {
+    it('always removes passwords and the JWT secret, preserving daqstore credentials for admins', () => {
         const settings = makeSettings();
 
-        for (const result of [
-            apiIndex._getSanitizedSettings(settings),
-            apiIndex._getPublicSettings(settings)
-        ]) {
-            expect(result).to.not.have.property('secretCode');
-            expect(result.smtp).to.not.have.property('password');
-            expect(result.daqstore).to.not.have.property('credentials');
-        }
+        const adminSettings = apiIndex._getSanitizedSettings(settings);
+        const publicSettings = apiIndex._getPublicSettings(settings);
+
+        expect(adminSettings).to.not.have.property('secretCode');
+        expect(adminSettings.smtp).to.not.have.property('password');
+        expect(adminSettings.daqstore).to.have.property('credentials');
+
+        expect(publicSettings).to.not.have.property('secretCode');
+        expect(publicSettings.smtp).to.not.have.property('password');
+        expect(publicSettings.daqstore).to.not.have.property('credentials');
 
         expect(settings).to.deep.equal(makeSettings());
     });

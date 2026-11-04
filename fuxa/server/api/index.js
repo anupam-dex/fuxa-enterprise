@@ -249,6 +249,7 @@ function getPublicSettings(settings) {
         delete tosend.daqstore.url;
         delete tosend.daqstore.host;
         delete tosend.daqstore.configurationString;
+        delete tosend.daqstore.credentials;
     }
     return tosend;
 }
@@ -259,9 +260,8 @@ function getSanitizedSettings(settings) {
     if (tosend.smtp) {
         delete tosend.smtp.password;
     }
-    if (tosend.daqstore?.credentials) {
-        delete tosend.daqstore.credentials;
-    }
+    // Preserved daqstore.credentials (token, username, password) so administrators and
+    // storage servers can view, verify and edit configured API keys and connection credentials.
     return tosend;
 }
 
