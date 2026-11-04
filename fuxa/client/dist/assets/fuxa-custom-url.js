@@ -107,6 +107,49 @@
                     white-space: nowrap !important;
                     font-variant-numeric: tabular-nums !important;
                 }
+
+                /* Header theme integration: remove white box behind Save/Settings */
+                :root {
+                    --headerBackground: transparent !important;
+                }
+                .header-panel,
+                app-header .header-panel,
+                div.header-panel {
+                    background-color: transparent !important;
+                    background: transparent !important;
+                    width: auto !important;
+                    max-width: 90px !important;
+                    display: inline-flex !important;
+                    align-items: center !important;
+                }
+                .header-panel .main-btn mat-icon,
+                app-header .header-panel .main-btn mat-icon,
+                .header-right .main-btn mat-icon,
+                app-header .header-right .main-btn mat-icon {
+                    color: #cbd5e1 !important;
+                }
+                .header-right,
+                app-header .header-right {
+                    background-color: transparent !important;
+                    background: transparent !important;
+                }
+
+                /* Strictly enforce read-only tag view on View Servers */
+                body.fuxa-view-server app-device-list .table-scroll mat-header-cell:first-child button,
+                body.fuxa-view-server app-device-list .table-scroll mat-cell:first-child button,
+                body.fuxa-view-server app-device-list .table-scroll .mat-column-select,
+                body.fuxa-view-server app-device-list .table-scroll .mat-column-remove,
+                body.fuxa-view-server app-device-list .table-scroll mat-header-cell:last-child,
+                body.fuxa-view-server app-device-list .table-scroll mat-cell:last-child,
+                body.fuxa-view-server app-device-list .table-scroll .mat-column-options,
+                body.fuxa-view-server app-device-list .daq-batch-toolbar,
+                body.fuxa-view-server #fuxa-batch-daq-toolbar {
+                    display: none !important;
+                    pointer-events: none !important;
+                }
+                body.fuxa-view-server .cdk-overlay-pane button.context-menu {
+                    display: none !important;
+                }
             `;
             (document.head || document.documentElement).appendChild(style);
         }
@@ -2025,7 +2068,27 @@
                 }
             }
 
-            // 3. If URL ends with /plugins on View Servers, redirect to /editor
+            // 3. Suppress Tag Options & Tag Property dialogs (individual tagging) if opened on View Servers
+            const tagOptionsDlg = document.querySelector('app-tag-options, app-tag-property, [class*="tag-property-edit"]');
+            if (tagOptionsDlg) {
+                const pane = tagOptionsDlg.closest('.cdk-overlay-pane') || tagOptionsDlg;
+                pane.remove();
+                const backdrop = document.querySelector('.cdk-overlay-backdrop');
+                if (backdrop && !document.querySelector('app-app-settings, app-setup, app-layout-property')) {
+                    backdrop.remove();
+                }
+                showBatchToast('View Server Notice: Tag configuration and historical DAQ logging are managed centrally by the Storage Server.', true);
+            }
+
+            // Hide Tag Options in 3-dots popup on View Servers
+            document.querySelectorAll('.cdk-overlay-pane button.context-menu').forEach(btn => {
+                const txt = (btn.textContent || '').trim().toLowerCase();
+                if (txt.includes('option') || txt.includes('tag')) {
+                    btn.style.setProperty('display', 'none', 'important');
+                }
+            });
+
+            // 4. If URL ends with /plugins on View Servers, redirect to /editor
             if (!isStorageServer() && window.location.pathname.includes('/plugins')) {
                 window.location.href = getBasePath() + '/editor';
                 setTimeout(showStatutoryWarningModal, 400);
@@ -2713,6 +2776,10 @@
 
     // Safe Single-Run Initialization
     function init() {
+        if (document.body) {
+            document.body.classList.toggle('fuxa-storage-server', isStorageServer());
+            document.body.classList.toggle('fuxa-view-server', !isStorageServer());
+        }
         removeHeaderPageUrlButton();
         const staleBadge = document.getElementById('fuxa-header-project-badge');
         if (staleBadge) staleBadge.remove();
@@ -2752,6 +2819,12 @@
     let isSavingBatchDaq = false;
 
     function ensureBatchDaqControlOnTagList() {
+        if (!isStorageServer()) {
+            const staleToolbar = document.getElementById('fuxa-batch-daq-toolbar');
+            if (staleToolbar) staleToolbar.remove();
+            return;
+        }
+
         const devList = document.querySelector('app-device-list');
         if (!devList) return;
         if (devList.classList.contains('hidden') || devList.style.display === 'none') {
@@ -3028,6 +3101,10 @@
 
     // Heartbeat check (every 800ms) to guarantee View header & footer persist across Angular route switches
     setInterval(() => {
+        if (document.body) {
+            document.body.classList.toggle('fuxa-storage-server', isStorageServer());
+            document.body.classList.toggle('fuxa-view-server', !isStorageServer());
+        }
         ensureTvsHeaderLogo();
         ensureRuntimeFooter();
         ensureHeaderLiveDateTime();
