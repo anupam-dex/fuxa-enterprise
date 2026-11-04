@@ -1079,6 +1079,20 @@
         8: "Material Handling"
     };
 
+    function formatTelemetryTimestamp(ts) {
+        if (!ts) return 'Never';
+        const d = new Date(ts);
+        if (isNaN(d.getTime())) return String(ts);
+        const pad = n => String(n).padStart(2, '0');
+        const yyyy = d.getFullYear();
+        const mm = pad(d.getMonth() + 1);
+        const dd = pad(d.getDate());
+        const hh = pad(d.getHours());
+        const min = pad(d.getMinutes());
+        const ss = pad(d.getSeconds());
+        return `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+    }
+
     function enhanceNativeDeviceNodesWithTelemetry(devicesList) {
         if (!Array.isArray(devicesList)) return;
         const nodes = document.querySelectorAll('app-device-map .node-device, .node-flow');
@@ -1089,34 +1103,59 @@
             const dev = devicesList.find(d => d.name === name || (d.property && d.property.address === name));
             if (!dev || !dev.telemetry) return;
 
-            // Ensure native action buttons (edit, link, delete) stay completely on top and clickable
+            // Ensure native action buttons (edit, link, delete) stay completely on top, visible, and clickable
             const buttons = node.querySelectorAll('.device-edit, .device-list, .device-delete');
             buttons.forEach(btn => {
                 btn.style.setProperty('z-index', '10', 'important');
                 btn.style.setProperty('cursor', 'pointer', 'important');
             });
 
-            // Position telemetry plate cleanly BELOW the 90px card so it NEVER overlaps buttons
+            // Ensure native status dot stays visible
+            const statusDot = node.querySelector('.device-status');
+            if (statusDot) {
+                statusDot.style.setProperty('z-index', '10', 'important');
+            }
+
+            // Position telemetry plate cleanly BELOW the card with generous 10px clearance
             let badge = node.querySelector('.fuxa-native-telem-badge');
             if (!badge) {
                 badge = document.createElement('div');
                 badge.className = 'fuxa-native-telem-badge';
-                badge.style.cssText = 'position: absolute; top: 96px; left: 0; width: 100%; box-sizing: border-box; background: #161b24; border: 1px solid #374151; border-radius: 4px; padding: 4px 6px; font-size: 10px; line-height: 1.35; font-family: monospace; text-align: left; pointer-events: none; z-index: 2; box-shadow: 0 4px 10px rgba(0,0,0,0.35);';
                 node.appendChild(badge);
             }
+
+            // Calculate precise geometry:
+            // node.offsetHeight includes content (90px) + padding-top (17px) + borders (10px) = ~117px
+            // node.clientTop is top border (5px)
+            // Bottom of card in node coordinate space = node.offsetHeight - node.clientTop (~112px)
+            // Adding 10px gives 10px of clear space between the bottom card border and top of telemetry badge.
+            const outerH = node.offsetHeight || 100;
+            const borderT = node.clientTop || 5;
+            const borderL = node.clientLeft || 5;
+            const outerW = node.offsetWidth || 170;
+            const topOffset = (outerH - borderT + 10);
+            const leftOffset = -borderL;
+
+            badge.style.cssText = `position: absolute; top: ${topOffset}px; left: ${leftOffset}px; width: ${outerW}px; box-sizing: border-box; background: #181f2a; border: 1.5px solid #334155; border-radius: 6px; padding: 6px 8px; font-size: 10px; line-height: 1.35; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: left; pointer-events: none; z-index: 5; box-shadow: 0 4px 12px rgba(0,0,0,0.45);`;
+
             const telem = dev.telemetry;
             const isConn = !!telem.connected;
-            const lastConn = telem.lastConnectedFormatted || (telem.lastConnected ? new Date(telem.lastConnected).toLocaleString() : 'Never');
+            const lastConn = formatTelemetryTimestamp(telem.lastConnected);
             const reconns = typeof telem.reconnectCount === 'number' ? telem.reconnectCount : 0;
             const cb = telem.circuitBreaker || {};
             const cbColor = cb.state === 'OPEN' ? '#f87171' : (cb.state === 'HALF_OPEN' ? '#facc15' : '#4ade80');
             const cbText = cb.state === 'OPEN' ? `OPEN (${cb.nextRetryInSeconds || 0}s)` : (cb.state === 'HALF_OPEN' ? 'TRIAL' : 'OK');
 
             badge.innerHTML = `
-                <div style="color: ${isConn ? '#4ade80' : (telem.lastConnected ? '#fde047' : '#ef4444')}; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">🕒 ${lastConn}</div>
-                <div style="display: flex; justify-content: space-between; gap: 6px; margin-top: 2px;">
-                    <span style="color: #cbd5e1;">🔄 Rec: <strong>${reconns}</strong></span>
-                    <span style="color: ${cbColor}; font-weight: 700;">🛡️ ${cbText}</span>
+                <div style="display: flex; align-items: center; justify-content: space-between; color: ${isConn ? '#4ade80' : (telem.lastConnected ? '#facc15' : '#ef4444')}; font-weight: 600; white-space: nowrap; font-size: 10px;">
+                    <span style="display: flex; align-items: center; gap: 5px;">
+                        <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: ${isConn ? '#22c55e' : '#ef4444'}; flex-shrink: 0;"></span>
+                        <span style="letter-spacing: 0.2px;">${lastConn}</span>
+                    </span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: 4px; font-size: 9.5px; color: #94a3b8;">
+                    <span>Reconn: <strong style="color: #f1f5f9; font-weight: 700;">${reconns}</strong></span>
+                    <span style="color: ${cbColor}; font-weight: 700; background: rgba(0,0,0,0.35); padding: 1px 6px; border-radius: 3px; border: 1px solid ${cbColor}44;">${cbText}</span>
                 </div>
             `;
         });
@@ -1826,16 +1865,26 @@
         const workPanel = document.querySelector('app-device .work-panel, app-device');
         if (!workPanel) return;
 
-        // 2. Cleanly enhance native FUXA header without injecting disruptive DOM elements
+        // 2. Ensure native FUXA header has its proper icon and clean title intact
         const headerPanel = document.querySelector('app-device .header-panel');
-        if (headerPanel && !headerPanel.dataset.storageTagged) {
-            headerPanel.dataset.storageTagged = 'true';
-            const port = parseInt(window.location.port, 10) || currentInstancePort || 5900;
-            let plantNum = '9';
-            if (port >= 5100 && port <= 5900) {
-                plantNum = String(Math.round((port - 5000) / 100));
+        if (headerPanel) {
+            const icon = headerPanel.querySelector('mat-icon');
+            if (icon) {
+                if (!icon.classList.contains('material-icons')) {
+                    icon.classList.add('material-icons');
+                }
+                if (icon.textContent.trim() !== 'lan') {
+                    icon.textContent = 'lan';
+                }
             }
-            headerPanel.innerHTML = `<mat-icon style="vertical-align: middle; margin-right: 6px;">lan</mat-icon> Connections settings &bull; Plant ${plantNum} Central Storage Master`;
+            // If previous run corrupted header text with raw "lan" or "Central Storage Master", restore native text
+            for (let node of Array.from(headerPanel.childNodes)) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    if (node.textContent.includes('lan Connections') || node.textContent.includes('Central Storage Master')) {
+                        node.textContent = ' Connections settings ';
+                    }
+                }
+            }
         }
 
         // 3. Fetch telemetry to enhance the native FUXA device cards
