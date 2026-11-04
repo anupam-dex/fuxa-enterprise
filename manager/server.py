@@ -523,6 +523,63 @@ def delete_instance(instance_id: str):
     port_engine.unregister_instance(instance_id)
     return {"success": True}
 
+@app.post("/api/migrate-project")
+async def api_migrate_project(request: Request):
+    """
+    Imports and auto-remaps dashboards and HMI views from an uploaded
+    project.json / .fuxap or remote server URL into a target View Server.
+    """
+    scripts_dir = os.path.join(BASE_DIR, "scripts")
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    from migrate_dashboards import migrate
+
+    content_type = request.headers.get("content-type", "")
+    source_data = None
+    target_id = "9610"
+    keep_existing = True
+    dry_run = False
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        file_obj = form.get("file")
+        target_id = form.get("target") or "9610"
+        keep_existing = str(form.get("keep_existing", "true")).lower() in ("true", "1", "yes")
+        dry_run = str(form.get("dry_run", "false")).lower() in ("true", "1", "yes")
+        source_url = form.get("source_url")
+
+        if file_obj and hasattr(file_obj, "read"):
+            content = await file_obj.read()
+            if content:
+                try:
+                    source_data = json.loads(content.decode("utf-8"))
+                except Exception as e:
+                    raise HTTPException(status_code=400, detail=f"Invalid JSON/fuxap file content: {e}")
+        elif source_url:
+            source_data = str(source_url).strip()
+    else:
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        target_id = body.get("target", "9610")
+        keep_existing = body.get("keep_existing", True)
+        dry_run = body.get("dry_run", False)
+        if "project" in body:
+            source_data = body["project"]
+        elif "source_url" in body:
+            source_data = body["source_url"]
+
+    if not source_data:
+        raise HTTPException(status_code=400, detail="Please upload a project.json / .fuxap file or provide a source URL.")
+
+    try:
+        result = migrate(source_data, str(target_id), dry_run=dry_run, keep_existing=keep_existing)
+        return result
+    except Exception as e:
+        logger.error(f"[MIGRATE-ERROR] Migration failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/instances/{instance_id}/sync-tags")
 def sync_instance_tags(instance_id: str):
     """Syncs the latest storage server tags into the view server's database and restarts if running"""

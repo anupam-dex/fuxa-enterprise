@@ -35,6 +35,7 @@
                 <span>View Servers: <strong id="stat-views-total">0</strong></span>
             </div>
             <button class="btn btn-secondary" onclick="openBackupModal()" title="1-Click Disaster Recovery & Fleet Snapshots" style="border-color: #38bdf8; color: #38bdf8; background: rgba(56, 189, 248, 0.1);">📦 Backup & Snapshots</button>
+            <button class="btn btn-secondary" onclick="openMigrateModal()" title="1-Click Import / Migrate project.json or .fuxap dashboards" style="border-color: #f59e0b; color: #fbbf24; background: rgba(245, 158, 11, 0.12); font-weight: 600;">📥 Import Project (.json / .fuxap)</button>
             <button class="btn btn-secondary" onclick="window.location.href='/simulator'" title="Open Soft OPC-UA Simulation & Fault Injection Lab" style="border-color: #a855f7; color: #d8b4fe; background: rgba(168, 85, 247, 0.1);">⚡ Soft OPC Lab</button>
             <button class="btn btn-secondary" onclick="syncAllTags()" title="Sync storage server tags to all View servers">🔄 Sync All Tags</button>
             <button class="btn btn-primary" onclick="openCreateModal()">+ Create New Project</button>
@@ -385,6 +386,95 @@
         </div>
     </div>
 
-    <script src="/static/app.js?v=5"></script>
+    <!-- Dashboard & View Migration Modal (project.json / .fuxap) -->
+    <div id="migrate-modal" class="modal-backdrop">
+        <div class="modal-box" style="max-width: 720px; width: 92%;">
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 1.4rem;">📥</span>
+                    <div>
+                        <h3 style="margin: 0; font-size: 1.15rem; color: #f8fafc;">Import Project & Dashboards</h3>
+                        <div style="font-size: 0.78rem; color: var(--text-muted);">Import existing FUXA dashboards (.fuxap / project.json) with automated tag binding remapping</div>
+                    </div>
+                </div>
+                <button class="btn-close" onclick="closeMigrateModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 16px 20px;">
+                <!-- Target Instance Selection -->
+                <div class="form-group" style="margin-bottom: 14px;">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: #cbd5e1; display: block; margin-bottom: 5px;">
+                        Target View Server Instance:
+                    </label>
+                    <select id="migrate-target-select" class="form-control" style="width: 100%; background: #0f172a; border: 1px solid #334155; color: #f8fafc; padding: 8px 12px; border-radius: 6px; font-size: 0.88rem;">
+                        <!-- Options populated dynamically -->
+                    </select>
+                    <small style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 4px;">
+                        The target View Server will receive all imported views and automatically remap telemetry widgets to its bridged Central Storage tags.
+                    </small>
+                </div>
+
+                <!-- Input Method Toggle (File Upload vs Remote URL) -->
+                <div style="display: flex; gap: 10px; margin-bottom: 14px;">
+                    <button type="button" id="tab-upload-file" class="btn btn-sm btn-primary" onclick="setMigrateSourceMode('file')" style="font-size: 0.8rem;">
+                        📁 Upload .fuxap / project.json
+                    </button>
+                    <button type="button" id="tab-upload-url" class="btn btn-sm btn-secondary" onclick="setMigrateSourceMode('url')" style="font-size: 0.8rem;">
+                        🌐 Pull from Remote Server URL
+                    </button>
+                </div>
+
+                <!-- Mode 1: File Upload Dropzone -->
+                <div id="migrate-mode-file" style="margin-bottom: 14px;">
+                    <div id="dropzone" onclick="document.getElementById('migrate-file-input').click()"
+                         style="border: 2px dashed #475569; border-radius: 8px; padding: 24px; text-align: center; cursor: pointer; background: rgba(30, 41, 59, 0.4); transition: border-color 0.2s;">
+                        <input type="file" id="migrate-file-input" accept=".json,.fuxap" style="display: none;" onchange="handleMigrateFileSelect(event)">
+                        <div style="font-size: 2rem; margin-bottom: 6px;">📄</div>
+                        <div id="dropzone-text" style="font-size: 0.9rem; font-weight: 600; color: #e2e8f0;">
+                            Click to select or drop <span style="color: #fbbf24;">project.json</span> or <span style="color: #38bdf8;">.fuxap</span> file
+                        </div>
+                        <div id="dropzone-subtext" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+                            Supported formats: FUXA project export (.json), FUXA package (.fuxap)
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mode 2: Remote URL Input -->
+                <div id="migrate-mode-url" style="display: none; margin-bottom: 14px;">
+                    <label style="font-size: 0.85rem; font-weight: 600; color: #cbd5e1; display: block; margin-bottom: 5px;">
+                        Existing FUXA SCADA Server Endpoint:
+                    </label>
+                    <input type="text" id="migrate-source-url" class="form-control" placeholder="http://192.168.1.50:1881 or http://old-scada/api/project" 
+                           style="width: 100%; background: #0f172a; border: 1px solid #334155; color: #f8fafc; padding: 8px 12px; border-radius: 6px; font-size: 0.88rem;">
+                    <small style="color: var(--text-muted); font-size: 0.75rem; display: block; margin-top: 4px;">
+                        Fleet Manager will connect directly to the live server and extract all dashboard pages automatically.
+                    </small>
+                </div>
+
+                <!-- Options Checkboxes -->
+                <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid #1e293b; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px;">
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: #e2e8f0; cursor: pointer; margin-bottom: 6px;">
+                        <input type="checkbox" id="migrate-opt-keep" checked>
+                        <span><strong>Keep existing views:</strong> Append imported views without deleting existing pages in target</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: #e2e8f0; cursor: pointer;">
+                        <input type="checkbox" id="migrate-opt-dryrun">
+                        <span><strong>Dry run preview:</strong> Analyze and test tag binding matches without modifying the database</span>
+                    </label>
+                </div>
+
+                <!-- Result Box (Hidden by default, shown upon migration) -->
+                <div id="migrate-results" style="display: none; margin-top: 14px; border-radius: 6px; padding: 14px; font-size: 0.85rem; font-family: system-ui, sans-serif;">
+                </div>
+            </div>
+            <div class="modal-footer" style="padding: 12px 20px; display: flex; justify-content: space-between; align-items: center;">
+                <button class="btn btn-secondary" onclick="closeMigrateModal()">Cancel</button>
+                <button id="btn-execute-migrate" class="btn btn-primary" onclick="executeProjectMigration()" style="background: linear-gradient(135deg, #f59e0b, #d97706); border-color: #f59e0b; color: #000; font-weight: 700;">
+                    🚀 Start 1-Click Migration
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js?v=6"></script>
 </body>
 </html>

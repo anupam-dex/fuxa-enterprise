@@ -31,8 +31,12 @@ INSTANCES_DIR = os.path.join(BASE_DIR, "instances")
 FLEET_MANAGER_URL = os.environ.get("FLEET_MANAGER_URL", "http://localhost:9000")
 
 
-def load_source_project(source_path_or_url: str) -> dict:
-    """Loads FUXA project JSON from a remote URL, a .fuxap, or a .json file."""
+def load_source_project(source_path_or_url) -> dict:
+    """Loads FUXA project JSON from a Python dict, remote URL, a .fuxap, or a .json file."""
+    if isinstance(source_path_or_url, dict):
+        return source_path_or_url
+    if isinstance(source_path_or_url, (bytes, bytearray)):
+        return json.loads(source_path_or_url.decode("utf-8"))
     if source_path_or_url.startswith("http://") or source_path_or_url.startswith("https://"):
         endpoint = source_path_or_url
         if not endpoint.endswith("/api/project"):
@@ -268,7 +272,16 @@ def migrate(source: str, target: str, dry_run: bool = False, keep_existing: bool
 
     if dry_run:
         print("\n[!] Dry run mode active: No changes written to database.")
-        return True
+        return {
+            "success": True,
+            "views_count": len(remapped_views),
+            "views": [{"id": v.get("id"), "name": v.get("name", "Unnamed"), "widgets": len(v.get("items", {}))} for v in remapped_views],
+            "stats": total_stats,
+            "target_instance": inst_id,
+            "target_port": port,
+            "dry_run": True,
+            "message": f"[Dry Run] Successfully simulated migration of {len(remapped_views)} view(s) to Port {port}."
+        }
 
     # 4. Write views and layout into target SQLite DB
     conn = sqlite3.connect(db_path)
@@ -341,7 +354,16 @@ def migrate(source: str, target: str, dry_run: bool = False, keep_existing: bool
     print(f" ✓ MIGRATION COMPLETE! Migrated {len(remapped_views)} dashboard(s) to Port {port}!")
     print(f"   View live at: http://localhost:{port}/ or via Gateway subpath.")
     print("=" * 70)
-    return True
+    return {
+        "success": True,
+        "views_count": len(remapped_views),
+        "views": [{"id": v.get("id"), "name": v.get("name", "Unnamed"), "widgets": len(v.get("items", {}))} for v in remapped_views],
+        "stats": total_stats,
+        "target_instance": inst_id,
+        "target_port": port,
+        "dry_run": False,
+        "message": f"Successfully migrated {len(remapped_views)} dashboard(s) to {inst_id} (Port {port})"
+    }
 
 
 if __name__ == "__main__":

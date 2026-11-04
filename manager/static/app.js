@@ -164,6 +164,7 @@ function renderInstancesList() {
             <div class="col-actions">
                 <a href="${otEditor}" target="_blank" class="btn btn-primary btn-sm" title="Open Editor (Port 80 - No Port Number)">Editor</a>
                 <a href="${otView}" target="_blank" class="btn btn-secondary btn-sm" title="Open Operator View (Port 80 - No Port Number)">View</a>
+                <button onclick="openMigrateModal('${inst.id}')" class="btn btn-secondary btn-sm" title="Import Dashboards (.json/.fuxap) into this View Server" style="color: #fbbf24; border-color: rgba(245, 158, 11, 0.4);">📥 Import</button>
                 <button onclick="syncTags('${inst.id}')" class="btn btn-secondary btn-sm" title="Sync Plant Storage Tags into this View Server">🔄 Sync Tags</button>
                 <button onclick="editInstance('${inst.id}')" class="btn btn-secondary btn-sm" title="Edit View Server">✏️ Edit</button>
                 <button onclick="viewLogs('${inst.id}')" class="btn btn-secondary btn-sm" title="View Logs">Logs</button>
@@ -645,6 +646,236 @@ async function deleteBackup(filename) {
         }
     } catch (e) {
         alert("Error deleting snapshot: " + e.message);
+    }
+}
+
+// ==============================================================================
+// 1-Click Dashboard & View Migration (project.json / .fuxap)
+// ==============================================================================
+let selectedMigrateFile = null;
+let migrateSourceMode = 'file'; // 'file' or 'url'
+
+function openMigrateModal(preselectedInstanceId = null) {
+    const modal = document.getElementById('migrate-modal');
+    if (!modal) return;
+
+    // Populate target select dropdown
+    const select = document.getElementById('migrate-target-select');
+    if (select) {
+        select.innerHTML = '';
+        const instances = Object.values(allInstancesMap);
+        if (instances.length === 0) {
+            select.innerHTML = '<option value="9610">Default View Server (Port 9610)</option>';
+        } else {
+            instances.forEach(inst => {
+                const opt = document.createElement('option');
+                opt.value = inst.id || inst.port;
+                opt.textContent = `${inst.name} — ${inst.subpath} (Plant ${inst.plant}, Port ${inst.port})`;
+                if (preselectedInstanceId && (inst.id === preselectedInstanceId || String(inst.port) === String(preselectedInstanceId))) {
+                    opt.selected = true;
+                }
+                select.appendChild(opt);
+            });
+        }
+    }
+
+    // Reset file / form state
+    selectedMigrateFile = null;
+    const fileInput = document.getElementById('migrate-file-input');
+    if (fileInput) fileInput.value = '';
+    const dropText = document.getElementById('dropzone-text');
+    if (dropText) dropText.innerHTML = 'Click to select or drop <span style="color: #fbbf24;">project.json</span> or <span style="color: #38bdf8;">.fuxap</span> file';
+    const resBox = document.getElementById('migrate-results');
+    if (resBox) {
+        resBox.style.display = 'none';
+        resBox.innerHTML = '';
+    }
+    setMigrateSourceMode('file');
+    setupDropzone();
+    modal.classList.add('show');
+}
+
+function closeMigrateModal() {
+    const modal = document.getElementById('migrate-modal');
+    if (modal) modal.classList.remove('show');
+}
+
+function setMigrateSourceMode(mode) {
+    migrateSourceMode = mode;
+    const tabFile = document.getElementById('tab-upload-file');
+    const tabUrl = document.getElementById('tab-upload-url');
+    const modeFile = document.getElementById('migrate-mode-file');
+    const modeUrl = document.getElementById('migrate-mode-url');
+
+    if (!tabFile || !tabUrl || !modeFile || !modeUrl) return;
+
+    if (mode === 'file') {
+        tabFile.className = 'btn btn-sm btn-primary';
+        tabUrl.className = 'btn btn-sm btn-secondary';
+        modeFile.style.display = 'block';
+        modeUrl.style.display = 'none';
+    } else {
+        tabFile.className = 'btn btn-sm btn-secondary';
+        tabUrl.className = 'btn btn-sm btn-primary';
+        modeFile.style.display = 'none';
+        modeUrl.style.display = 'block';
+    }
+}
+
+function handleMigrateFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    selectedMigrateFile = file;
+    const dropText = document.getElementById('dropzone-text');
+    if (dropText) {
+        dropText.innerHTML = `✅ Selected: <strong style="color: #4ade80;">${file.name}</strong> (${(file.size / 1024).toFixed(1)} KB)`;
+    }
+}
+
+function setupDropzone() {
+    const dropzone = document.getElementById('dropzone');
+    if (!dropzone || dropzone.dataset.hooked) return;
+    dropzone.dataset.hooked = 'true';
+
+    ['dragenter', 'dragover'].forEach(name => {
+        dropzone.addEventListener(name, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.style.borderColor = '#fbbf24';
+            dropzone.style.background = 'rgba(245, 158, 11, 0.1)';
+        });
+    });
+    ['dragleave', 'drop'].forEach(name => {
+        dropzone.addEventListener(name, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.style.borderColor = '#475569';
+            dropzone.style.background = 'rgba(30, 41, 59, 0.4)';
+        });
+    });
+    dropzone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        if (dt && dt.files && dt.files.length > 0) {
+            selectedMigrateFile = dt.files[0];
+            const dropText = document.getElementById('dropzone-text');
+            if (dropText) {
+                dropText.innerHTML = `✅ Selected: <strong style="color: #4ade80;">${selectedMigrateFile.name}</strong> (${(selectedMigrateFile.size / 1024).toFixed(1)} KB)`;
+            }
+        }
+    });
+}
+
+async function executeProjectMigration() {
+    const btn = document.getElementById('btn-execute-migrate');
+    const resBox = document.getElementById('migrate-results');
+    const targetSelect = document.getElementById('migrate-target-select');
+    const target = targetSelect ? targetSelect.value : '9610';
+    const keepExisting = document.getElementById('migrate-opt-keep')?.checked ?? true;
+    const dryRun = document.getElementById('migrate-opt-dryrun')?.checked ?? false;
+
+    if (migrateSourceMode === 'file' && !selectedMigrateFile) {
+        alert('Please select or drop a project.json or .fuxap file first.');
+        return;
+    }
+    const sourceUrl = (document.getElementById('migrate-source-url')?.value || '').trim();
+    if (migrateSourceMode === 'url' && !sourceUrl) {
+        alert('Please enter a remote server URL (e.g. http://192.168.1.50:1881).');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Migrating & Remapping...';
+    resBox.style.display = 'block';
+    resBox.style.background = '#0f172a';
+    resBox.style.border = '1px solid #334155';
+    resBox.innerHTML = '<div style="color: #94a3b8; text-align: center; padding: 12px;">Analyzing views and resolving Central Storage tag bindings...</div>';
+
+    try {
+        const formData = new FormData();
+        formData.append('target', target);
+        formData.append('keep_existing', keepExisting ? 'true' : 'false');
+        formData.append('dry_run', dryRun ? 'true' : 'false');
+
+        if (migrateSourceMode === 'file') {
+            formData.append('file', selectedMigrateFile);
+        } else {
+            formData.append('source_url', sourceUrl);
+        }
+
+        const resp = await fetch('/api/migrate-project', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await resp.json();
+        if (!resp.ok) {
+            throw new Error(data.detail || 'Migration request failed');
+        }
+
+        const stats = data.stats || {};
+        const matchedInst = allInstancesMap[target] || allInstancesMap[data.target_instance] || { port: data.target_port, subpath: `/p9/ps/ems` };
+        const host = window.location.hostname || '127.0.0.1';
+        const proto = window.location.protocol || 'http:';
+        const otView = `${proto}//${host}${matchedInst.subpath || ''}/home`;
+        const otEditor = `${proto}//${host}${matchedInst.subpath || ''}/editor`;
+
+        let unmatchedHtml = '';
+        if (stats.unmatched && stats.unmatched.length > 0) {
+            unmatchedHtml = `
+                <details style="margin-top: 10px; cursor: pointer;">
+                    <summary style="color: #facc15; font-weight: 600; font-size: 0.8rem;">
+                        ⚠️ Notice: ${stats.unmatched.length} unmatched tag(s) in source widgets (Click to expand)
+                    </summary>
+                    <div style="background: #020617; border-radius: 4px; padding: 8px; margin-top: 6px; max-height: 140px; overflow-y: auto; font-family: monospace; font-size: 0.75rem; color: #cbd5e1;">
+                        ${stats.unmatched.map(u => `<div>• [${u.item_type}] Variable: <code>${u.variable}</code></div>`).join('')}
+                    </div>
+                </details>
+            `;
+        }
+
+        resBox.style.background = '#064e3b';
+        resBox.style.border = '1px solid #10b981';
+        resBox.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                <strong style="color: #34d399; font-size: 0.95rem;">
+                    ${data.dry_run ? '🔍 Dry Run Completed Successfully' : '🎉 Dashboards Migrated Successfully!'}
+                </strong>
+                <span style="background: rgba(16, 185, 129, 0.2); color: #6ee7b7; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 700;">
+                    ${data.views_count} View(s)
+                </span>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 10px 0; background: rgba(0,0,0,0.25); padding: 8px; border-radius: 6px; text-align: center;">
+                <div><div style="font-size: 1.1rem; font-weight: 800; color: #f8fafc;">${stats.total_items || 0}</div><div style="font-size: 0.7rem; color: #94a3b8;">Widgets</div></div>
+                <div><div style="font-size: 1.1rem; font-weight: 800; color: #38bdf8;">${stats.bound_items || 0}</div><div style="font-size: 0.7rem; color: #94a3b8;">Telemetry</div></div>
+                <div><div style="font-size: 1.1rem; font-weight: 800; color: #4ade80;">${(stats.exact_matches || 0) + (stats.remapped || 0)}</div><div style="font-size: 0.7rem; color: #94a3b8;">Auto-Remapped</div></div>
+                <div><div style="font-size: 1.1rem; font-weight: 800; color: ${stats.unmatched && stats.unmatched.length > 0 ? '#facc15' : '#94a3b8'};">${(stats.unmatched || []).length}</div><div style="font-size: 0.7rem; color: #94a3b8;">Unmatched</div></div>
+            </div>
+            ${unmatchedHtml}
+            ${!data.dry_run ? `
+                <div style="margin-top: 12px; display: flex; gap: 8px; justify-content: flex-end;">
+                    <a href="${otView}" target="_blank" class="btn btn-sm btn-primary" style="background: #10b981; border-color: #059669; text-decoration: none;">
+                        🌐 Open Operator View ↗
+                    </a>
+                    <a href="${otEditor}" target="_blank" class="btn btn-sm btn-secondary" style="text-decoration: none;">
+                        ✏️ Open Editor ↗
+                    </a>
+                </div>
+            ` : ''}
+        `;
+
+        if (!data.dry_run) {
+            loadMatrix();
+        }
+    } catch (err) {
+        resBox.style.background = '#450a0a';
+        resBox.style.border = '1px solid #ef4444';
+        resBox.innerHTML = `
+            <strong style="color: #f87171;">Migration Failed:</strong>
+            <div style="color: #fca5a5; font-size: 0.8rem; margin-top: 4px;">${err.message}</div>
+        `;
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '🚀 Start 1-Click Migration';
     }
 }
 
