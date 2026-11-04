@@ -7,11 +7,16 @@ Provides visual port map, wizard to create new instances, and life-cycle managem
 import os
 import sys
 import json
+import time
+import glob
+import io
+import tarfile
+import shutil
 import asyncio
 import psutil
 import subprocess
 import logging
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
@@ -46,9 +51,86 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 INSTANCES_DIR = os.path.join(BASE_DIR, "instances")
 FUXA_SERVER_PATH = os.path.join(BASE_DIR, "fuxa", "server", "main.js")
 NGINX_CONF_DIR = os.path.join(BASE_DIR, "nginx", "conf.d")
+BACKUPS_DIR = os.path.join(BASE_DIR, "backups")
+os.makedirs(BACKUPS_DIR, exist_ok=True)
 
 port_engine = PortEngine()
 running_processes = {}  # instance_id -> subprocess.Popen
+
+# ==============================================================================
+# OT Reliability: Automatic Process Watchdog & Self-Healing
+# ==============================================================================
+watchdog_state = {
+    "enabled": True,
+    "interval_seconds": 6,
+    "last_check_timestamp": None,
+    "total_checks": 0,
+    "auto_recoveries": 0,
+    "events": []
+}
+
+def record_watchdog_event(target: str, message: str, event_type: str = "RECOVERY"):
+    event = {
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "target": target,
+        "message": message,
+        "type": event_type
+    }
+    watchdog_state["events"].insert(0, event)
+    if len(watchdog_state["events"]) > 50:
+        watchdog_state["events"].pop()
+    logger.info(f"[WATCHDOG] [{event_type}] {target}: {message}")
+
+async def process_watchdog_loop():
+    """
+    Continuous Industrial Process Watchdog:
+    Monitors all central storage masters & distributed view servers.
+    Automatically self-heals any process that stops unexpectedly.
+    """
+    await asyncio.sleep(10)  # Initial startup grace period
+    while True:
+        try:
+            if watchdog_state["enabled"]:
+                watchdog_state["last_check_timestamp"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                watchdog_state["total_checks"] += 1
+
+                # 1. Audit Central Storage Servers
+                plants = port_engine.registry.get("plants", {})
+                for plant_id, p_info in plants.items():
+                    s_port = p_info.get("storage_port")
+                    if s_port and not port_engine.is_port_in_use(s_port):
+                        logger.warning(f"[WATCHDOG] Storage Master for Plant {plant_id} (: {s_port}) down! Self-healing...")
+                        s_work_dir = os.path.join(INSTANCES_DIR, f"storage_plant_{plant_id}_{s_port}")
+                        pid = _launch_fuxa_instance(f"storage_p{plant_id}", s_port, s_work_dir, f"/p{plant_id}/storage")
+                        if pid:
+                            watchdog_state["auto_recoveries"] += 1
+                            record_watchdog_event(f"Storage Plant {plant_id}", f"Self-healed Storage Master process on port {s_port} (PID {pid})", "STORAGE_RECOVERED")
+
+                # 2. Audit View Server Instances
+                instances = port_engine.get_all_instances()
+                for inst_id, inst in list(instances.items()):
+                    if inst.get("user_stopped"):
+                        continue
+                    port = inst.get("port")
+                    if not port:
+                        continue
+                    if not port_engine.is_port_in_use(port):
+                        logger.warning(f"[WATCHDOG] View Server '{inst.get('name', inst_id)}' (: {port}) unexpected termination! Self-healing...")
+                        work_dir = inst.get("work_dir") or os.path.join(INSTANCES_DIR, f"port_{port}")
+                        subpath = inst.get("subpath") or f"/p{inst.get('plant', 9)}/div{inst.get('division', 1)}/l{inst.get('line', 1)}"
+                        pid = _launch_fuxa_instance(inst_id, port, work_dir, subpath)
+                        if pid:
+                            watchdog_state["auto_recoveries"] += 1
+                            inst["pid"] = pid
+                            inst["status"] = "RUNNING"
+                            inst["restart_count"] = inst.get("restart_count", 0) + 1
+                            inst["last_recovered_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                            port_engine.register_instance(inst_id, inst)
+                            record_watchdog_event(inst.get("name", inst_id), f"Auto-restarted crashed View Server on port {port} (Restart #{inst['restart_count']}, PID {pid})", "VIEW_RECOVERED")
+        except Exception as e:
+            logger.error(f"[WATCHDOG] Error in watchdog monitor loop: {e}")
+
+        await asyncio.sleep(watchdog_state["interval_seconds"])
 
 def ensure_default_storage_servers():
     """Hosts central storage collector instances for each plant by default"""
@@ -113,6 +195,10 @@ async def on_startup():
             inst["pid"] = pid
             inst["status"] = "RUNNING" if pid else "STOPPED"
             port_engine.register_instance(inst_id, inst)
+
+    # 4. Start Continuous Process Watchdog & Self-Healing loop
+    asyncio.create_task(process_watchdog_loop())
+    logger.info("Started Automatic Process Watchdog (Continuous Self-Healing Active)")
 
 class CreateProjectRequest(BaseModel):
     plant: int
@@ -234,8 +320,25 @@ def get_matrix():
     return {
         "matrix": port_engine.get_port_matrix(),
         "plants": port_engine.registry.get("plants", {}),
-        "divisions": port_engine.registry.get("divisions", {})
+        "divisions": port_engine.registry.get("divisions", {}),
+        "watchdog": {
+            "enabled": watchdog_state["enabled"],
+            "total_checks": watchdog_state["total_checks"],
+            "auto_recoveries": watchdog_state["auto_recoveries"],
+            "last_check": watchdog_state["last_check_timestamp"],
+            "recent_events": watchdog_state["events"][:10]
+        }
     }
+
+@app.get("/api/watchdog/status")
+def get_watchdog_status():
+    return watchdog_state
+
+@app.post("/api/watchdog/toggle")
+def toggle_watchdog():
+    watchdog_state["enabled"] = not watchdog_state["enabled"]
+    record_watchdog_event("System Watchdog", f"Watchdog state toggled to {'ENABLED' if watchdog_state['enabled'] else 'PAUSED'}", "CONFIG")
+    return {"enabled": watchdog_state["enabled"]}
 
 @app.post("/api/create-project")
 def create_project(req: CreateProjectRequest):
@@ -379,6 +482,7 @@ def stop_instance(instance_id: str):
             pass
 
     inst["status"] = "STOPPED"
+    inst["user_stopped"] = True
     inst["pid"] = None
     port_engine.register_instance(instance_id, inst)
     return {"success": True, "status": "STOPPED"}
@@ -390,6 +494,7 @@ def start_instance(instance_id: str):
         raise HTTPException(status_code=404, detail="Instance not found")
 
     inst = instances[instance_id]
+    inst["user_stopped"] = False
     pid = _launch_fuxa_instance(instance_id, inst["port"], inst["work_dir"], inst["subpath"])
     inst["pid"] = pid
     inst["status"] = "RUNNING" if pid else "STOPPED"
@@ -746,6 +851,183 @@ def add_sim_to_storage(server_id: str):
         "message": f"Successfully mapped {dev_name} ({len(tags_dict)} tags) into Plant {plant_id} Storage Server (: {storage_port})!",
         "device": dev_obj
     }
+
+# ==============================================================================
+# OT Reliability: 1-Click Disaster Recovery & Backup Snapshots
+# ==============================================================================
+class RestoreRequest(BaseModel):
+    filename: str
+
+@app.post("/api/backup/create")
+def api_create_backup():
+    """Bundles SQLite DBs, plant topology, and config into a single timestamped snapshot"""
+    try:
+        os.makedirs(BACKUPS_DIR, exist_ok=True)
+        ts_str = time.strftime("%Y%m%d_%H%M%S")
+        filename = f"fuxa_fleet_snapshot_{ts_str}.tar.gz"
+        archive_path = os.path.join(BACKUPS_DIR, filename)
+
+        instances = port_engine.get_all_instances()
+        manifest = {
+            "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "filename": filename,
+            "version": "1.0.0",
+            "instances_count": len(instances),
+            "instances": {k: {"name": v.get("name"), "port": v.get("port"), "plant": v.get("plant"), "tags": v.get("tag_count", 0)} for k, v in instances.items()}
+        }
+
+        def filter_tar(tarinfo):
+            name = tarinfo.name.lower()
+            if name.endswith(".log") or "node_modules" in name or "__pycache__" in name or ".git" in name:
+                return None
+            return tarinfo
+
+        with tarfile.open(archive_path, "w:gz") as tar:
+            if os.path.exists(INSTANCES_DIR):
+                tar.add(INSTANCES_DIR, arcname="instances", filter=filter_tar)
+            reg_file = os.path.join(BASE_DIR, "manager", "registry.json")
+            if os.path.exists(reg_file):
+                tar.add(reg_file, arcname="manager/registry.json")
+            if os.path.exists(NGINX_CONF_DIR):
+                tar.add(NGINX_CONF_DIR, arcname="nginx/conf.d", filter=filter_tar)
+
+            manifest_bytes = json.dumps(manifest, indent=2).encode("utf-8")
+            tarinfo = tarfile.TarInfo(name="manifest.json")
+            tarinfo.size = len(manifest_bytes)
+            tarinfo.mtime = int(time.time())
+            tar.addfile(tarinfo, io.BytesIO(manifest_bytes))
+
+        size_kb = round(os.path.getsize(archive_path) / 1024, 2)
+        record_watchdog_event("Backup Engine", f"Created disaster recovery snapshot {filename} ({size_kb} KB)", "BACKUP_CREATED")
+        return {
+            "success": True,
+            "filename": filename,
+            "size_kb": size_kb,
+            "created_at": manifest["created_at"],
+            "instances_count": len(instances),
+            "manifest": manifest
+        }
+    except Exception as e:
+        logger.error(f"Backup creation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/backup/list")
+def api_list_backups():
+    """Returns all available fleet snapshots sorted newest first"""
+    os.makedirs(BACKUPS_DIR, exist_ok=True)
+    backups = []
+    for f in glob.glob(os.path.join(BACKUPS_DIR, "*.tar.gz")):
+        fname = os.path.basename(f)
+        try:
+            stat = os.stat(f)
+            size_kb = round(stat.st_size / 1024, 2)
+            c_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(stat.st_mtime))
+            manifest = None
+            try:
+                with tarfile.open(f, "r:gz") as tar:
+                    m_file = tar.extractfile("manifest.json")
+                    if m_file:
+                        manifest = json.loads(m_file.read().decode("utf-8"))
+            except Exception:
+                pass
+
+            backups.append({
+                "filename": fname,
+                "size_kb": size_kb,
+                "created_at": (manifest and manifest.get("created_at")) or c_time,
+                "instances_count": (manifest and manifest.get("instances_count")) or 0,
+                "manifest": manifest
+            })
+        except Exception:
+            pass
+
+    backups.sort(key=lambda x: x["created_at"], reverse=True)
+    return {"backups": backups}
+
+@app.get("/api/backup/download/{filename}")
+def api_download_backup(filename: str):
+    safe_name = os.path.basename(filename)
+    path = os.path.join(BACKUPS_DIR, safe_name)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Backup file not found")
+    return FileResponse(path, filename=safe_name, media_type="application/gzip")
+
+@app.post("/api/backup/upload")
+async def api_upload_backup(file: UploadFile = File(...)):
+    """Uploads an external .tar.gz snapshot into the backups repository"""
+    if not file.filename.endswith(".tar.gz"):
+        raise HTTPException(status_code=400, detail="Only .tar.gz backup files supported")
+    safe_name = os.path.basename(file.filename)
+    dest_path = os.path.join(BACKUPS_DIR, safe_name)
+    content = await file.read()
+    with open(dest_path, "wb") as f:
+        f.write(content)
+    return {"success": True, "filename": safe_name, "size_kb": round(len(content) / 1024, 2)}
+
+@app.post("/api/backup/restore")
+def api_restore_backup(req: RestoreRequest):
+    """Executes 1-click safe fleet recovery from snapshot"""
+    safe_name = os.path.basename(req.filename)
+    archive_path = os.path.join(BACKUPS_DIR, safe_name)
+    if not os.path.exists(archive_path):
+        raise HTTPException(status_code=404, detail="Backup file not found")
+
+    logger.warning(f"[DISASTER-RECOVERY] Restoring fleet from {safe_name}...")
+    was_enabled = watchdog_state["enabled"]
+    watchdog_state["enabled"] = False
+
+    try:
+        # 1. Stop all current running view instances
+        instances = port_engine.get_all_instances()
+        for inst_id in list(instances.keys()):
+            try:
+                stop_instance(inst_id)
+            except Exception:
+                pass
+
+        # 2. Extract snapshot
+        with tarfile.open(archive_path, "r:gz") as tar:
+            tar.extractall(path=BASE_DIR)
+
+        # 3. Reload registry & restart all instances
+        port_engine.registry = port_engine._load_registry()
+        ensure_default_storage_servers()
+
+        restored_instances = port_engine.get_all_instances()
+        restarted_count = 0
+        for r_id, r_inst in list(restored_instances.items()):
+            r_inst["user_stopped"] = False
+            r_port = r_inst.get("port")
+            if r_port and not port_engine.is_port_in_use(r_port):
+                r_work_dir = r_inst.get("work_dir") or os.path.join(INSTANCES_DIR, f"port_{r_port}")
+                r_subpath = r_inst.get("subpath") or f"/p{r_inst.get('plant', 9)}/div{r_inst.get('division', 1)}/l{r_inst.get('line', 1)}"
+                pid = _launch_fuxa_instance(r_id, r_port, r_work_dir, r_subpath)
+                r_inst["pid"] = pid
+                r_inst["status"] = "RUNNING" if pid else "STOPPED"
+                port_engine.register_instance(r_id, r_inst)
+                restarted_count += 1
+
+        reload_nginx()
+        record_watchdog_event("Disaster Recovery", f"Fleet successfully restored from {safe_name} ({restarted_count} view servers recovered)", "RESTORE_SUCCESS")
+        return {
+            "success": True,
+            "message": f"Successfully restored {restarted_count} view servers and all plant databases from snapshot!",
+            "restarted_count": restarted_count
+        }
+    except Exception as e:
+        logger.error(f"Restore failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        watchdog_state["enabled"] = was_enabled
+
+@app.delete("/api/backup/{filename}")
+def api_delete_backup(filename: str):
+    safe_name = os.path.basename(filename)
+    path = os.path.join(BACKUPS_DIR, safe_name)
+    if os.path.exists(path):
+        os.remove(path)
+        return {"success": True}
+    raise HTTPException(status_code=404, detail="File not found")
 
 # Static file serving for the Manager UI
 static_dir = os.path.join(os.path.dirname(__file__), "static")

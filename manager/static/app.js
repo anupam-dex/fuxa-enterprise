@@ -10,6 +10,9 @@ async function loadMatrix() {
         const res = await fetch('/api/matrix');
         const data = await res.json();
         currentMatrix = data.matrix || [];
+        if (data.watchdog) {
+            updateWatchdogHeader(data.watchdog);
+        }
         renderTopology(currentMatrix);
     } catch (err) {
         console.error("Failed to load matrix:", err);
@@ -361,6 +364,287 @@ async function syncAllTags() {
         }
     } catch (e) {
         alert('Error syncing all tags: ' + e.message);
+    }
+}
+
+// =============================================================================
+// OT Reliability: Process Watchdog Functions
+// =============================================================================
+let currentWatchdogData = null;
+
+function updateWatchdogHeader(wd) {
+    currentWatchdogData = wd;
+    const textEl = document.getElementById('stat-watchdog-text');
+    const dotEl = document.getElementById('dot-watchdog');
+    if (!textEl) return;
+    if (wd.enabled) {
+        textEl.textContent = `Active (${wd.auto_recoveries || 0} Heals)`;
+        textEl.style.color = '#10b981';
+        if (dotEl) {
+            dotEl.className = 'dot live';
+        }
+    } else {
+        textEl.textContent = 'PAUSED';
+        textEl.style.color = '#f59e0b';
+        if (dotEl) {
+            dotEl.className = 'dot';
+            dotEl.style.background = '#f59e0b';
+        }
+    }
+}
+
+async function openWatchdogModal() {
+    const modal = document.getElementById('watchdog-modal');
+    modal.classList.add('show');
+    await refreshWatchdogModal();
+}
+
+function closeWatchdogModal() {
+    document.getElementById('watchdog-modal').classList.remove('show');
+}
+
+async function refreshWatchdogModal() {
+    try {
+        const res = await fetch('/api/watchdog/status');
+        const data = await res.json();
+        currentWatchdogData = data;
+        
+        const statusEl = document.getElementById('wd-stat-status');
+        if (statusEl) {
+            statusEl.textContent = data.enabled ? 'ACTIVE' : 'PAUSED';
+            statusEl.style.color = data.enabled ? '#10b981' : '#f59e0b';
+        }
+        const scansEl = document.getElementById('wd-stat-scans');
+        if (scansEl) scansEl.textContent = data.total_checks || 0;
+        const recovEl = document.getElementById('wd-stat-recoveries');
+        if (recovEl) recovEl.textContent = data.auto_recoveries || 0;
+        
+        const btnToggle = document.getElementById('btn-toggle-watchdog');
+        if (btnToggle) {
+            btnToggle.textContent = data.enabled ? 'Pause Watchdog' : 'Resume Watchdog';
+        }
+
+        const list = document.getElementById('wd-events-list');
+        if (!list) return;
+        const events = data.events || [];
+        if (events.length === 0) {
+            list.innerHTML = '<div style="color: var(--text-muted); text-align: center; padding: 18px;">🛡️ All monitored processes healthy. No crash recovery events recorded.</div>';
+            return;
+        }
+
+        let html = '';
+        events.forEach(ev => {
+            const isRecov = ev.type.includes('RECOVER') || ev.type === 'RECOVERY';
+            const color = isRecov ? '#fbbf24' : (ev.type === 'RESTORE' ? '#38bdf8' : '#94a3b8');
+            html += `
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; padding: 6px 4px; border-bottom: 1px solid rgba(255,255,255,0.05); gap: 10px;">
+                    <div>
+                        <span style="color: ${color}; font-weight: 700;">[${ev.type}]</span>
+                        <strong style="color: #f1f5f9; margin-left: 6px;">${ev.target}:</strong>
+                        <span style="color: #cbd5e1; margin-left: 4px;">${ev.message}</span>
+                    </div>
+                    <span style="color: var(--text-muted); font-size: 0.72rem; white-space: nowrap; flex-shrink: 0;">${ev.timestamp}</span>
+                </div>
+            `;
+        });
+        list.innerHTML = html;
+    } catch (e) {
+        console.error("Watchdog modal error:", e);
+    }
+}
+
+async function toggleWatchdog() {
+    try {
+        const res = await fetch('/api/watchdog/toggle', { method: 'POST' });
+        const data = await res.json();
+        await refreshWatchdogModal();
+        loadMatrix();
+    } catch (e) {
+        alert("Could not toggle watchdog: " + e.message);
+    }
+}
+
+// =============================================================================
+// OT Reliability: 1-Click Disaster Recovery & Backup Snapshots
+// =============================================================================
+async function openBackupModal() {
+    const modal = document.getElementById('backup-modal');
+    modal.classList.add('show');
+    await loadBackupsList();
+}
+
+function closeBackupModal() {
+    document.getElementById('backup-modal').classList.remove('show');
+}
+
+async function loadBackupsList() {
+    const container = document.getElementById('backup-list-container');
+    if (!container) return;
+    container.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text-muted);">Loading snapshots...</div>';
+    
+    try {
+        const res = await fetch('/api/backup/list');
+        const data = await res.json();
+        const backups = data.backups || [];
+
+        if (backups.length === 0) {
+            container.innerHTML = `
+                <div style="padding: 32px 20px; text-align: center; color: var(--text-muted);">
+                    <div style="font-size: 1.8rem; margin-bottom: 6px;">📦</div>
+                    <div style="font-size: 0.95rem; font-weight: 600; color: #f1f5f9; margin-bottom: 4px;">No backup snapshots found</div>
+                    <div style="font-size: 0.78rem;">Click "+ Snapshot Now" above to create your first full disaster recovery archive.</div>
+                </div>
+            `;
+            return;
+        }
+
+        let html = `
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.82rem; text-align: left;">
+                <thead>
+                    <tr style="border-bottom: 1px solid #242e3f; color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">
+                        <th style="padding: 10px 14px;">Snapshot Archive</th>
+                        <th style="padding: 10px 14px;">Created</th>
+                        <th style="padding: 10px 14px;">Size</th>
+                        <th style="padding: 10px 14px;">Instances</th>
+                        <th style="padding: 10px 14px; text-align: right;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        backups.forEach(b => {
+            html += `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background='transparent'">
+                    <td style="padding: 10px 14px; font-family: monospace; color: #38bdf8; font-weight: 600;">
+                        📄 ${b.filename}
+                    </td>
+                    <td style="padding: 10px 14px; color: #cbd5e1; font-family: monospace; font-size: 0.76rem;">
+                        ${b.created_at}
+                    </td>
+                    <td style="padding: 10px 14px; color: #94a3b8; font-family: monospace;">
+                        ${b.size_kb} KB
+                    </td>
+                    <td style="padding: 10px 14px;">
+                        <span style="background: rgba(56, 189, 248, 0.12); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.25); padding: 1px 7px; border-radius: 4px; font-size: 0.72rem; font-weight: 600;">
+                            ${b.instances_count} Lines
+                        </span>
+                    </td>
+                    <td style="padding: 10px 14px; text-align: right;">
+                        <button onclick="downloadBackup('${b.filename}')" class="btn btn-secondary" style="font-size: 0.72rem; padding: 3px 8px; margin-right: 4px;" title="Download archive to local machine">
+                            ⬇ Download
+                        </button>
+                        <button onclick="confirmRestoreBackup('${b.filename}')" class="btn btn-primary" style="font-size: 0.72rem; padding: 3px 10px; margin-right: 4px; background: linear-gradient(135deg, #10b981, #059669);" title="1-Click Safe Disaster Recovery">
+                            🔄 Restore
+                        </button>
+                        <button onclick="deleteBackup('${b.filename}')" style="background: transparent; border: none; color: #ef4444; font-size: 0.85rem; cursor: pointer; padding: 2px 4px; opacity: 0.8;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'" title="Delete Snapshot">
+                            🗑️
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+
+        html += `</tbody></table>`;
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = `<div style="padding: 20px; color: #ef4444; text-align: center;">Error loading snapshots: ${e.message}</div>`;
+    }
+}
+
+async function createFleetBackup() {
+    const btn = document.getElementById('btn-create-backup');
+    btn.disabled = true;
+    const oldText = btn.textContent;
+    btn.textContent = 'Archiving Fleet...';
+
+    try {
+        const res = await fetch('/api/backup/create', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            alert(`✓ Disaster Recovery Snapshot Created!\n\nFile: ${data.filename}\nSize: ${data.size_kb} KB\nLines Included: ${data.instances_count}`);
+            await loadBackupsList();
+        } else {
+            alert("Backup failed: " + (data.detail || "Unknown error"));
+        }
+    } catch (e) {
+        alert("Error creating snapshot: " + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = oldText;
+    }
+}
+
+function downloadBackup(filename) {
+    window.open(`/api/backup/download/${filename}`, '_blank');
+}
+
+async function handleBackupUpload(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+        const res = await fetch('/api/backup/upload', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert(`✓ Backup archive "${data.filename}" uploaded successfully!`);
+            await loadBackupsList();
+        } else {
+            alert("Upload failed: " + (data.detail || "Unknown error"));
+        }
+    } catch (e) {
+        alert("Error uploading backup: " + e.message);
+    } finally {
+        event.target.value = '';
+    }
+}
+
+async function confirmRestoreBackup(filename) {
+    const confirmed = confirm(
+        `⚠️ WARNING: 1-Click Disaster Recovery Restore\n\n` +
+        `Restoring snapshot "${filename}" will safely stop all running lines, replace databases with this snapshot, and re-launch all restored servers.\n\n` +
+        `Do you want to proceed with full fleet restore?`
+    );
+
+    if (!confirmed) return;
+
+    try {
+        const res = await fetch('/api/backup/restore', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert(`✓ ${data.message}`);
+            closeBackupModal();
+            loadMatrix();
+        } else {
+            alert("Restore failed: " + (data.detail || "Unknown error"));
+        }
+    } catch (e) {
+        alert("Error restoring snapshot: " + e.message);
+    }
+}
+
+async function deleteBackup(filename) {
+    if (!confirm(`Delete snapshot archive "${filename}"?`)) return;
+
+    try {
+        const res = await fetch(`/api/backup/${filename}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+            await loadBackupsList();
+        } else {
+            alert("Delete failed: " + (data.detail || "Unknown error"));
+        }
+    } catch (e) {
+        alert("Error deleting snapshot: " + e.message);
     }
 }
 

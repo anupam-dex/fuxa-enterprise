@@ -27,9 +27,14 @@
                 <span class="dot live"></span>
                 <span>OT Gateway: <strong>Port 80</strong></span>
             </div>
+            <div class="stat-pill" id="pill-watchdog" title="Automated Process Watchdog & Self-Healing Engine (Click to view live logs)" onclick="openWatchdogModal()" style="cursor: pointer;">
+                <span class="dot live" id="dot-watchdog"></span>
+                <span>Watchdog: <strong id="stat-watchdog-text">Active (0 Heals)</strong></span>
+            </div>
             <div class="stat-pill">
                 <span>View Servers: <strong id="stat-views-total">0</strong></span>
             </div>
+            <button class="btn btn-secondary" onclick="openBackupModal()" title="1-Click Disaster Recovery & Fleet Snapshots" style="border-color: #38bdf8; color: #38bdf8; background: rgba(56, 189, 248, 0.1);">📦 Backup & Snapshots</button>
             <button class="btn btn-secondary" onclick="window.location.href='/simulator'" title="Open Soft OPC-UA Simulation & Fault Injection Lab" style="border-color: #a855f7; color: #d8b4fe; background: rgba(168, 85, 247, 0.1);">⚡ Soft OPC Lab</button>
             <button class="btn btn-secondary" onclick="syncAllTags()" title="Sync storage server tags to all View servers">🔄 Sync All Tags</button>
             <button class="btn btn-primary" onclick="openCreateModal()">+ Create New Project</button>
@@ -283,6 +288,99 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-secondary" onclick="closeLogsModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Process Watchdog Modal -->
+    <div id="watchdog-modal" class="modal-backdrop">
+        <div class="modal-box" style="max-width: 850px; width: 90%;">
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 1.3rem;">🛡️</span>
+                    <div>
+                        <h3 style="margin: 0;">Industrial Process Watchdog & Self-Healing</h3>
+                        <p style="margin: 2px 0 0 0; font-size: 0.78rem; color: var(--text-muted);">
+                            Active monitoring for all central storage masters & view servers with automated crash recovery
+                        </p>
+                    </div>
+                </div>
+                <button class="btn-close" onclick="closeWatchdogModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 16px 24px;">
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;">
+                    <div style="background: #0d121c; border: 1px solid #242e3f; border-radius: 6px; padding: 12px; text-align: center;">
+                        <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase;">Watchdog Status</div>
+                        <div id="wd-stat-status" style="font-size: 1.1rem; font-weight: 700; color: #10b981; margin-top: 4px;">ACTIVE</div>
+                    </div>
+                    <div style="background: #0d121c; border: 1px solid #242e3f; border-radius: 6px; padding: 12px; text-align: center;">
+                        <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase;">Scan Interval</div>
+                        <div style="font-size: 1.1rem; font-weight: 700; color: #38bdf8; margin-top: 4px;">6s Loop</div>
+                    </div>
+                    <div style="background: #0d121c; border: 1px solid #242e3f; border-radius: 6px; padding: 12px; text-align: center;">
+                        <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase;">Total Scans</div>
+                        <div id="wd-stat-scans" style="font-size: 1.1rem; font-weight: 700; color: #f8fafc; margin-top: 4px;">0</div>
+                    </div>
+                    <div style="background: #0d121c; border: 1px solid #242e3f; border-radius: 6px; padding: 12px; text-align: center;">
+                        <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase;">Auto-Recoveries</div>
+                        <div id="wd-stat-recoveries" style="font-size: 1.1rem; font-weight: 700; color: #fbbf24; margin-top: 4px;">0</div>
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <span style="font-size: 0.88rem; font-weight: 600; color: #cbd5e1;">Live Watchdog Audit Log:</span>
+                    <button id="btn-toggle-watchdog" class="btn btn-secondary" onclick="toggleWatchdog()" style="font-size: 0.75rem; padding: 4px 12px;">Pause Watchdog</button>
+                </div>
+
+                <div id="wd-events-list" style="background: #0d121c; border: 1px solid #242e3f; border-radius: 6px; max-height: 280px; overflow-y: auto; padding: 10px; font-family: monospace; font-size: 0.78rem;">
+                    <!-- Injected by JS -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeWatchdogModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Disaster Recovery & Snapshots Modal -->
+    <div id="backup-modal" class="modal-backdrop">
+        <div class="modal-box" style="max-width: 950px; width: 92%;">
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 1.4rem;">📦</span>
+                    <div>
+                        <h3 style="margin: 0;">SCADA Fleet Disaster Recovery & Snapshots</h3>
+                        <p style="margin: 2px 0 0 0; font-size: 0.78rem; color: var(--text-muted);">
+                            Create complete offline snapshots of all View Server projects, SQLite databases, and plant configurations with 1-click restore
+                        </p>
+                    </div>
+                </div>
+                <button class="btn-close" onclick="closeBackupModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 16px 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; background: rgba(30, 41, 59, 0.5); padding: 12px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);">
+                    <div>
+                        <span style="font-size: 0.9rem; font-weight: 600; color: #f8fafc;">Create Timestamped Fleet Snapshot</span>
+                        <div style="font-size: 0.75rem; color: var(--text-muted);">Bundles all view servers, databases, and network configs into a compressed .tar.gz archive</div>
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="file" id="backup-file-input" accept=".tar.gz" style="display: none;" onchange="handleBackupUpload(event)">
+                        <button class="btn btn-secondary" onclick="document.getElementById('backup-file-input').click()" style="font-size: 0.8rem;">
+                            ⬆ Upload Archive
+                        </button>
+                        <button id="btn-create-backup" class="btn btn-primary" onclick="createFleetBackup()" style="font-size: 0.82rem; background: linear-gradient(135deg, #10b981, #059669);">
+                            + Snapshot Now
+                        </button>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 8px; font-size: 0.85rem; font-weight: 600; color: #cbd5e1;">Available Disaster Recovery Snapshots:</div>
+                <div id="backup-list-container" style="background: #0d121c; border: 1px solid #242e3f; border-radius: 6px; max-height: 320px; overflow-y: auto;">
+                    <!-- Injected by JS -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeBackupModal()">Close</button>
             </div>
         </div>
     </div>

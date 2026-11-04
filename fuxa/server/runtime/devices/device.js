@@ -52,6 +52,15 @@ function Device(data, runtime) {
     var totalConnections = 0;                               // Total successful connections since server restart
     var reconnectCount = 0;                                 // Reconnections after initial connection since server restart
     var lastConnectedTimestamp = null;                      // Timestamp (ms) of the last successful connection
+
+    // =========================================================================
+    // OT Reliability: Exponential Backoff Circuit Breaker for Field Devices
+    // =========================================================================
+    var CircuitState = { CLOSED: 'CLOSED', OPEN: 'OPEN', HALF_OPEN: 'HALF_OPEN' };
+    var circuitState = CircuitState.CLOSED;
+    var consecutiveFailures = 0;
+    var nextRetryTimestamp = 0;
+    var BACKOFF_DELAYS = [1000, 3000, 10000, 30000];       // 1s -> 3s -> 10s -> 30s cap
     var comm;                                               // Interface to OPCUA/S7/.. Device
                                                             // required: connect, disconnect, isConnected, polling, init, load, getValue,
                                                             // getValues, getStatus, setValue, bindAddDaq, getTagProperty,
@@ -179,6 +188,9 @@ function Device(data, runtime) {
         return new Promise(function (resolve, reject) {
             currentCmd = DeviceCmdEnum.STOP;
             connectGeneration++;
+            circuitState = CircuitState.CLOSED;
+            consecutiveFailures = 0;
+            nextRetryTimestamp = 0;
             logger.info(`'${property.name}' stop`);
             if (devicePolling) {
                 clearInterval(devicePolling);
@@ -199,16 +211,49 @@ function Device(data, runtime) {
     }
 
     /**
-     * Check the Device connection, Reconnect
+     * Check the Device connection, Reconnect with Exponential Backoff Circuit Breaker
      */
     this.checkStatus = function () {
+        const now = Date.now();
+
+        // 1. Detect if an active device dropped connection
+        if (status === DeviceStatusEnum.IDLE && !comm.isConnected()) {
+            status = DeviceStatusEnum.INIT;
+            if (devicePolling) {
+                clearInterval(devicePolling);
+                devicePolling = null;
+            }
+            consecutiveFailures = Math.max(consecutiveFailures, 1);
+            const backoffMs = BACKOFF_DELAYS[0];
+            nextRetryTimestamp = now + backoffMs;
+            circuitState = CircuitState.OPEN;
+            logger.warn(`[CIRCUIT-BREAKER] Device '${property.name}' connection lost! Trip circuit OPEN (Retry in ${backoffMs/1000}s).`);
+        }
+
+        // 2. If disconnected and starting, enforce circuit breaker backoff
         if (status === DeviceStatusEnum.INIT && currentCmd === DeviceCmdEnum.START && !deviceConnecting) {
+            if (circuitState === CircuitState.OPEN) {
+                if (now < nextRetryTimestamp) {
+                    // Backoff active: skip connection attempt to protect event loop & network
+                    return;
+                }
+                // Backoff timer expired: transition to HALF_OPEN to test connection
+                circuitState = CircuitState.HALF_OPEN;
+                logger.info(`[CIRCUIT-BREAKER] Device '${property.name}' testing connection (Circuit HALF-OPEN)...`);
+            }
+
             const self = this;
             deviceConnecting = true;
             this.connect().then(() => {
                 if (currentCmd !== DeviceCmdEnum.START) {
                     return;
                 }
+                if (circuitState !== CircuitState.CLOSED || consecutiveFailures > 0) {
+                    logger.info(`[CIRCUIT-BREAKER] Device '${property.name}' connected successfully! Circuit CLOSED - full acquisition active.`);
+                }
+                circuitState = CircuitState.CLOSED;
+                consecutiveFailures = 0;
+                nextRetryTimestamp = 0;
                 tryToConnect = 0;
                 status = DeviceStatusEnum.IDLE;
                 self.restoreValues();
@@ -216,23 +261,22 @@ function Device(data, runtime) {
                 if (currentCmd !== DeviceCmdEnum.START) {
                     return;
                 }
-                logger.error(`'${property.name}' connect error! ${err} (${tryToConnect})`);
+                consecutiveFailures++;
+                const delayIndex = Math.min(consecutiveFailures - 1, BACKOFF_DELAYS.length - 1);
+                const backoffMs = BACKOFF_DELAYS[delayIndex];
+                nextRetryTimestamp = Date.now() + backoffMs;
+                circuitState = CircuitState.OPEN;
+
+                logger.error(`[CIRCUIT-BREAKER] Device '${property.name}' connect failure #${consecutiveFailures}: ${err}. Circuit OPEN (Next retry in ${backoffMs/1000}s).`);
                 if (tryToConnect++ > 3) {
                     tryToConnect = 0;
-                    self.disconnect().then(() => {});
+                    self.disconnect().then(() => {}).catch(() => {});
                 }
             }).finally(() => {
                 deviceConnecting = false;
             });
-        } else if (status === DeviceStatusEnum.IDLE && !comm.isConnected()) {
-            status = DeviceStatusEnum.INIT;
-            if (devicePolling) {
-                clearInterval(devicePolling);
-                devicePolling = null;
-            }
         }
         // check connection status
-        const now = Date.now();
         var lastRead = comm.lastReadTimestamp() || 0;
         if (lastRead < now - pollingInterval * 5) {
             connectionStatus = ConnectionStatusEnum.OFF;
@@ -331,6 +375,10 @@ function Device(data, runtime) {
      */
     this.getTelemetry = function () {
         const isConn = comm ? (typeof comm.isConnected === 'function' ? comm.isConnected() : false) : false;
+        const now = Date.now();
+        const nextRetrySec = (circuitState === CircuitState.OPEN && nextRetryTimestamp > now)
+            ? Math.round((nextRetryTimestamp - now) / 1000)
+            : 0;
         return {
             id: property.id,
             name: property.name,
@@ -340,7 +388,12 @@ function Device(data, runtime) {
             lastConnected: lastConnectedTimestamp,
             lastConnectedFormatted: lastConnectedTimestamp ? new Date(lastConnectedTimestamp).toLocaleString() : 'Never connected',
             totalConnections: totalConnections,
-            reconnectCount: reconnectCount
+            reconnectCount: reconnectCount,
+            circuitBreaker: {
+                state: circuitState,
+                failures: consecutiveFailures,
+                nextRetryInSeconds: nextRetrySec
+            }
         };
     }
 

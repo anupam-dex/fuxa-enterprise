@@ -1680,6 +1680,14 @@
                                             ${reconnects}
                                         </span>
                                     </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 4px; border-top: 1px dashed rgba(255,255,255,0.08);">
+                                        <span style="color: #94a3b8; display: flex; align-items: center; gap: 4px;">
+                                            <span>🛡️</span> Smart Backoff:
+                                        </span>
+                                        <span class="topo-cb-badge" style="background: ${telem.circuitBreaker && telem.circuitBreaker.state === 'OPEN' ? 'rgba(239, 68, 68, 0.2)' : (telem.circuitBreaker && telem.circuitBreaker.state === 'HALF_OPEN' ? 'rgba(234, 179, 8, 0.2)' : 'rgba(16, 185, 129, 0.15)')}; color: ${telem.circuitBreaker && telem.circuitBreaker.state === 'OPEN' ? '#f87171' : (telem.circuitBreaker && telem.circuitBreaker.state === 'HALF_OPEN' ? '#facc15' : '#34d399')}; border: 1px solid ${telem.circuitBreaker && telem.circuitBreaker.state === 'OPEN' ? 'rgba(239, 68, 68, 0.4)' : (telem.circuitBreaker && telem.circuitBreaker.state === 'HALF_OPEN' ? 'rgba(234, 179, 8, 0.4)' : 'rgba(16, 185, 129, 0.3)')}; padding: 1px 6px; border-radius: 4px; font-size: 0.68rem; font-weight: 700; font-family: monospace;" title="OT Circuit Breaker backoff protection">
+                                            ${telem.circuitBreaker && telem.circuitBreaker.state === 'OPEN' ? `OPEN (${telem.circuitBreaker.nextRetryInSeconds || 0}s)` : (telem.circuitBreaker && telem.circuitBreaker.state === 'HALF_OPEN' ? 'HALF_OPEN' : 'CLOSED')}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1743,6 +1751,26 @@
                 const tagCountEl = card.querySelector('.topo-tag-count');
                 if (tagCountEl) {
                     tagCountEl.textContent = tagCount > 0 ? `✓ ${tagCount} Tags Active` : 'Ready to map tags';
+                }
+                const cb = telem.circuitBreaker || {};
+                const cbEl = card.querySelector('.topo-cb-badge');
+                if (cbEl) {
+                    if (cb.state === 'OPEN') {
+                        cbEl.textContent = `OPEN (${cb.nextRetryInSeconds || 0}s)`;
+                        cbEl.style.color = '#f87171';
+                        cbEl.style.background = 'rgba(239, 68, 68, 0.2)';
+                        cbEl.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+                    } else if (cb.state === 'HALF_OPEN') {
+                        cbEl.textContent = 'HALF_OPEN';
+                        cbEl.style.color = '#facc15';
+                        cbEl.style.background = 'rgba(234, 179, 8, 0.2)';
+                        cbEl.style.borderColor = 'rgba(234, 179, 8, 0.4)';
+                    } else {
+                        cbEl.textContent = 'CLOSED';
+                        cbEl.style.color = '#34d399';
+                        cbEl.style.background = 'rgba(16, 185, 129, 0.15)';
+                        cbEl.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+                    }
                 }
             });
             return;
