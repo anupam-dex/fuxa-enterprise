@@ -2762,8 +2762,18 @@
         const filterEl = devList.querySelector('.filter');
         if (!filterEl) return;
 
-        const selectEl = filterEl.querySelector('mat-select');
-        const currentDevName = selectEl ? (selectEl.textContent || '').trim().split('\n')[0].trim() : '';
+        function getSelectedDevName() {
+            const select = filterEl.querySelector('mat-select');
+            if (!select) return '';
+            const textSpan = select.querySelector('.mat-mdc-select-value-text, .mat-mdc-select-value, .mat-select-value-text, .mat-select-value, span[class*="select-value"]');
+            let txt = textSpan ? (textSpan.textContent || '').trim() : '';
+            if (!txt) {
+                txt = (select.textContent || '').trim();
+            }
+            return txt.split('\n')[0].trim();
+        }
+
+        const currentDevName = getSelectedDevName();
 
         let toolbar = filterEl.querySelector('#fuxa-batch-daq-toolbar');
         if (!toolbar) {
@@ -2808,8 +2818,7 @@
                 e.preventDefault();
                 e.stopPropagation();
                 if (isSavingBatchDaq) return;
-                const selectText = filterEl.querySelector('mat-select .mat-select-value-text, mat-select .mat-select-value');
-                const targetDevName = selectText ? selectText.textContent.trim() : '';
+                const targetDevName = getSelectedDevName();
                 if (!targetDevName) {
                     showBatchToast('Please select a device first', true);
                     return;
@@ -2825,7 +2834,10 @@
                     if (!res || !res.ok) throw new Error('Could not fetch project data');
                     const project = await res.json();
                     const devices = project.devices || {};
-                    const dev = Object.values(devices).find(d => d.name === targetDevName);
+                    const dev = Object.values(devices).find(d => 
+                        (d.name && d.name.trim() === targetDevName) ||
+                        (d.id && d.id.trim() === targetDevName)
+                    );
                     if (!dev) throw new Error(`Device "${targetDevName}" not found in project`);
 
                     const tags = dev.tags || {};
@@ -2879,9 +2891,11 @@
                 e.preventDefault();
                 e.stopPropagation();
                 if (isSavingBatchDaq) return;
-                const selectText = filterEl.querySelector('mat-select .mat-select-value-text, mat-select .mat-select-value');
-                const targetDevName = selectText ? selectText.textContent.trim() : '';
-                if (!targetDevName) return;
+                const targetDevName = getSelectedDevName();
+                if (!targetDevName) {
+                    showBatchToast('Please select a device first', true);
+                    return;
+                }
 
                 if (!confirm(`Disable historical DAQ logging for all tags in "${targetDevName}"?`)) return;
 
@@ -2895,7 +2909,10 @@
                     if (!res || !res.ok) throw new Error('Could not fetch project data');
                     const project = await res.json();
                     const devices = project.devices || {};
-                    const dev = Object.values(devices).find(d => d.name === targetDevName);
+                    const dev = Object.values(devices).find(d => 
+                        (d.name && d.name.trim() === targetDevName) ||
+                        (d.id && d.id.trim() === targetDevName)
+                    );
                     if (!dev) return;
 
                     const tags = dev.tags || {};
@@ -2954,7 +2971,10 @@
             if (!res || !res.ok) return;
             const project = await res.json();
             const devices = project.devices || {};
-            const dev = Object.values(devices).find(d => d.name === targetDevName);
+            const dev = Object.values(devices).find(d => 
+                (d.name && d.name.trim() === targetDevName.trim()) || 
+                (d.id && d.id.trim() === targetDevName.trim())
+            );
             if (!dev || !dev.tags) {
                 countEl.textContent = '0 tags';
                 return;
