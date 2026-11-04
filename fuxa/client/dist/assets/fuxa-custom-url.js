@@ -1093,16 +1093,23 @@
             if (!badge) {
                 badge = document.createElement('div');
                 badge.className = 'fuxa-native-telem-badge';
-                badge.style.cssText = 'font-size: 10px; color: #94a3b8; margin-top: 4px; line-height: 1.35; font-family: monospace; text-align: left; background: rgba(0,0,0,0.45); padding: 3px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.08);';
+                badge.style.cssText = 'font-size: 10px; color: #94a3b8; margin: 4px 6px; line-height: 1.35; font-family: monospace; text-align: left; background: rgba(0,0,0,0.5); padding: 3px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.1); pointer-events: none;';
                 node.appendChild(badge);
             }
             const telem = dev.telemetry;
             const isConn = !!telem.connected;
             const lastConn = telem.lastConnectedFormatted || (telem.lastConnected ? new Date(telem.lastConnected).toLocaleString() : 'Never');
             const reconns = typeof telem.reconnectCount === 'number' ? telem.reconnectCount : 0;
+            const cb = telem.circuitBreaker || {};
+            const cbColor = cb.state === 'OPEN' ? '#f87171' : (cb.state === 'HALF_OPEN' ? '#facc15' : '#4ade80');
+            const cbText = cb.state === 'OPEN' ? `OPEN (${cb.nextRetryInSeconds || 0}s)` : (cb.state === 'HALF_OPEN' ? 'TRIAL' : 'OK');
+
             badge.innerHTML = `
                 <div style="color: ${isConn ? '#4ade80' : (telem.lastConnected ? '#fde047' : '#ef4444')}; font-weight: 600;">🕒 ${lastConn}</div>
-                <div style="color: #cbd5e1;">🔄 Reconnects: <strong>${reconns}</strong></div>
+                <div style="display: flex; justify-content: space-between; gap: 6px; margin-top: 2px;">
+                    <span style="color: #cbd5e1;">🔄 Rec: <strong>${reconns}</strong></span>
+                    <span style="color: ${cbColor}; font-weight: 700;">🛡️ ${cbText}</span>
+                </div>
             `;
         });
     }
@@ -1799,128 +1806,56 @@
     };
 
     function renderStorageServerTopologicalView() {
+        // 1. Immediately remove the old clunky foreign hub if present
+        const oldHub = document.getElementById('fuxa-storage-topological-hub');
+        if (oldHub) oldHub.remove();
+        const oldBanner = document.getElementById('fuxa-storage-master-banner');
+        if (oldBanner) oldBanner.remove();
+
         if (!window.location.pathname.includes('/device')) return;
         const workPanel = document.querySelector('app-device .work-panel, app-device');
         if (!workPanel) return;
 
-        if (document.getElementById('fuxa-storage-topological-hub')) {
-            return;
-        }
+        // 2. Insert a sleek, 100% native FUXA-themed header banner above workPanel
+        const deviceComp = document.querySelector('app-device');
+        if (deviceComp && !document.getElementById('fuxa-storage-native-banner')) {
+            const port = parseInt(window.location.port, 10) || currentInstancePort || 5900;
+            let plantNum = '9';
+            if (port >= 5100 && port <= 5900) {
+                plantNum = String(Math.round((port - 5000) / 100));
+            }
 
-        // Remove legacy simple banner if present
-        const oldBanner = document.getElementById('fuxa-storage-master-banner');
-        if (oldBanner) oldBanner.remove();
+            const banner = document.createElement('div');
+            banner.id = 'fuxa-storage-native-banner';
+            banner.style.cssText = 'background: #232830; border-bottom: 1px solid #3c424f; padding: 8px 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; font-size: 12.5px; color: #d1d5db; font-family: Roboto, -apple-system, sans-serif; box-sizing: border-box; z-index: 10;';
 
-        const hub = document.createElement('div');
-        hub.id = 'fuxa-storage-topological-hub';
-        hub.style.cssText = 'background: #0f172a; border: 1.5px solid rgba(56, 189, 248, 0.35); border-radius: 12px; padding: 20px 24px; margin: 40px 20px 20px 20px; font-family: system-ui, -apple-system, sans-serif; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.4); color: #f8fafc;';
-
-        hub.innerHTML = `
-            <!-- Top Hero Header -->
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.1);">
-                <div>
-                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
-                        <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #10b981; box-shadow: 0 0 10px #10b981;"></span>
-                        <span style="font-size: 1.15rem; font-weight: 700; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.5px;">
-                            Central Storage Master &bull; Plant Topological Acquisition Hub
-                        </span>
-                    </div>
-                    <div style="font-size: 0.85rem; color: #94a3b8; max-width: 800px; line-height: 1.45;">
-                        Full field device acquisition mode active. Add Siemens S7, Modbus TCP, OPC-UA, MQTT, EtherNet/IP, or BACnet field devices organized into the plant topology (Plant &rarr; Division &rarr; Line). Ingested tags automatically log history into InfluxDB and sync to all matching HMI View Servers.
-                    </div>
+            banner.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #10b981; box-shadow: 0 0 6px #10b981;"></span>
+                    <span style="font-weight: 600; color: #38bdf8; font-size: 13px;">Storage Server Master &bull; Plant ${plantNum}</span>
+                    <span style="color: #475569;">|</span>
+                    <span style="color: #94a3b8; font-size: 12px;">Connected devices log to InfluxDB & sync tags to View Servers</span>
                 </div>
-                <button id="btn-open-topo-add-modal" style="flex-shrink: 0; display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; font-size: 0.86rem; font-weight: 700; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 6px; cursor: pointer; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4); transition: transform 0.15s, box-shadow 0.15s;" onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 6px 18px rgba(16, 185, 129, 0.5)'" onmouseout="this.style.transform='none'; this.style.boxShadow='0 4px 14px rgba(16, 185, 129, 0.4)'">
-                    <span style="font-size: 16px; font-weight: bold;">+</span> Add Device to Topology
-                </button>
-            </div>
-
-            <!-- Topological Filters Bar -->
-            <div style="background: rgba(30, 41, 59, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px 16px; margin-bottom: 18px;">
-                <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #38bdf8;">Divisions:</span>
-                        <div id="topo-div-pills" style="display: flex; flex-wrap: wrap; gap: 6px;">
-                            <!-- Injected by JS -->
-                        </div>
-                    </div>
-                    <div>
-                        <input id="topo-search-input" type="text" placeholder="Filter devices by name, IP, protocol..." style="width: 240px; height: 30px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.15); border-radius: 5px; color: #f8fafc; padding: 0 10px; font-size: 0.8rem; outline: none;" />
-                    </div>
+                <div style="display: flex; align-items: center; gap: 16px; font-size: 12px; color: #94a3b8;">
+                    <span style="display: flex; align-items: center; gap: 4px;">
+                        <span style="color: #38bdf8;">✏️</span> Click <strong>Edit</strong> on a device to configure IP & port
+                    </span>
+                    <span style="display: flex; align-items: center; gap: 4px;">
+                        <span style="color: #10b981;">🔗</span> Click <strong>Link</strong> on a device to view & browse tags
+                    </span>
+                    <span style="display: flex; align-items: center; gap: 4px;">
+                        <span style="color: #fbbf24;">🛡️</span> Smart Backoff Active
+                    </span>
                 </div>
-
-                <div style="display: flex; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06);">
-                    <span style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #6ee7b7;">Lines:</span>
-                    <div id="topo-line-pills" style="display: flex; flex-wrap: wrap; gap: 6px;">
-                        <!-- Injected by JS -->
-                    </div>
-                </div>
-            </div>
-
-            <!-- Topological Cards Tree / Hierarchy -->
-            <div id="topo-cards-tree">
-                <div style="text-align: center; padding: 24px; color: #94a3b8; font-size: 0.85rem;">
-                    Loading Plant Topology Infrastructure...
-                </div>
-            </div>
-        `;
-
-        // Inject scoped styles for pills
-        if (!document.getElementById('fuxa-topo-scoped-styles')) {
-            const style = document.createElement('style');
-            style.id = 'fuxa-topo-scoped-styles';
-            style.textContent = `
-                .topo-pill {
-                    background: rgba(255, 255, 255, 0.05);
-                    border: 1px solid rgba(255, 255, 255, 0.12);
-                    color: #cbd5e1;
-                    padding: 3px 10px;
-                    border-radius: 5px;
-                    font-size: 0.75rem;
-                    font-weight: 500;
-                    cursor: pointer;
-                    transition: all 0.15s ease;
-                }
-                .topo-pill:hover {
-                    background: rgba(56, 189, 248, 0.15);
-                    border-color: rgba(56, 189, 248, 0.35);
-                    color: #f1f5f9;
-                }
-                .topo-pill.active {
-                    background: #0284c7;
-                    border-color: #38bdf8;
-                    color: #ffffff;
-                    font-weight: 600;
-                    box-shadow: 0 2px 6px rgba(2, 132, 199, 0.4);
-                }
             `;
-            document.head.appendChild(style);
+
+            if (workPanel.parentElement) {
+                workPanel.parentElement.insertBefore(banner, workPanel);
+            }
         }
 
-        workPanel.prepend(hub);
-
-        // Hook Add Button
-        hub.querySelector('#btn-open-topo-add-modal').onclick = () => {
-            openAddTopologyDeviceModal();
-        };
-
-        // Hook Search Input
-        const searchInput = hub.querySelector('#topo-search-input');
-        if (searchInput) {
-            searchInput.addEventListener('input', (e) => {
-                topoSearchQuery = e.target.value.trim();
-                updateStorageTopologyDOM();
-            });
-        }
-
-        // Fetch fresh topology from storage server backend
+        // 3. Fetch telemetry to enhance the native FUXA device cards
         fetchStorageTopology();
-        if (!window.__topoPollTimer) {
-            window.__topoPollTimer = setInterval(() => {
-                if (window.location.pathname.includes('/device') && isStorageServer()) {
-                    fetchStorageTopology();
-                }
-            }, 3000);
-        }
     }
 
     function enforceViewServerRestrictions() {
