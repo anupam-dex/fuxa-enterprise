@@ -57,6 +57,15 @@ if [ ! -d "$SCRIPT_DIR/fuxa/server/node_modules" ]; then
     cd "$SCRIPT_DIR"
 fi
 
+# Ensure node-opcua is present and permissions are open for dynamic plugin installation
+if [ ! -d "$SCRIPT_DIR/fuxa/server/node_modules/node-opcua" ]; then
+    echo "Pre-installing node-opcua plugin..."
+    cd "$SCRIPT_DIR/fuxa/server"
+    npm install node-opcua@^2.149.0 --no-audit --no-fund --omit=dev || true
+    cd "$SCRIPT_DIR"
+fi
+chmod -R a+rw "$SCRIPT_DIR/fuxa/server/node_modules" 2>/dev/null || true
+
 echo "=========================================================================="
 echo " 1. Starting FUXA Central Storage OPC-UA Bridge..."
 echo "    Endpoint: opc.tcp://0.0.0.0:4845/fuxa/server/"

@@ -1053,10 +1053,12 @@
     }
 
     function isStorageServer() {
-        const port = parseInt(window.location.port, 10);
+        const port = parseInt(window.location.port, 10) || currentInstancePort || parseInt(localStorage.getItem('fuxa_target_port') || '0', 10);
         if ([5100, 5200, 5300, 5400, 5900].includes(port)) return true;
         const path = (window.location.pathname || '').toLowerCase();
         if (path.includes('/storage')) return true;
+        const base = (getBasePath() || '').toLowerCase();
+        if (base.includes('/storage')) return true;
         return false;
     }
 
@@ -1644,11 +1646,11 @@
                     const dotColor = isConn ? '#10b981' : (telem.lastConnected ? '#f59e0b' : '#ef4444');
 
                     treeHtml += `
-                        <div style="background: rgba(30, 41, 59, 0.7); border: 1px solid ${isConn ? 'rgba(16, 185, 129, 0.35)' : 'rgba(255,255,255,0.1)'}; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: transform 0.2s, border-color 0.2s;" onmouseover="this.style.borderColor='rgba(56, 189, 248, 0.5)'" onmouseout="this.style.borderColor='${isConn ? 'rgba(16, 185, 129, 0.35)' : 'rgba(255,255,255,0.1)'}'">
+                        <div data-dev-id="${dev.id}" class="topo-dev-card" style="background: rgba(30, 41, 59, 0.7); border: 1px solid ${isConn ? 'rgba(16, 185, 129, 0.35)' : 'rgba(255,255,255,0.1)'}; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); transition: transform 0.2s, border-color 0.2s;" onmouseover="this.style.borderColor='rgba(56, 189, 248, 0.5)'" onmouseout="this.style.borderColor='${isConn ? 'rgba(16, 185, 129, 0.35)' : 'rgba(255,255,255,0.1)'}'">
                             <div>
                                 <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
                                     <div style="font-weight: 700; font-size: 0.88rem; color: #f1f5f9; display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis;">
-                                        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor}; box-shadow: 0 0 8px ${dotColor};"></span>
+                                        <span class="topo-dot" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${dotColor}; box-shadow: 0 0 8px ${dotColor};"></span>
                                         <span title="${dev.name}">${dev.name}</span>
                                     </div>
                                     ${protoBadge}
@@ -1666,7 +1668,7 @@
                                         <span style="color: #94a3b8; display: flex; align-items: center; gap: 4px;">
                                             <span>🕒</span> Last Connected:
                                         </span>
-                                        <span style="color: ${isConn ? '#4ade80' : (telem.lastConnected ? '#fde047' : '#94a3b8')}; font-family: monospace; font-weight: 600;" title="Last connected timestamp with date">
+                                        <span class="topo-last-conn" style="color: ${isConn ? '#4ade80' : (telem.lastConnected ? '#fde047' : '#94a3b8')}; font-family: monospace; font-weight: 600;" title="Last connected timestamp with date">
                                             ${lastConnFormatted}
                                         </span>
                                     </div>
@@ -1674,7 +1676,7 @@
                                         <span style="color: #94a3b8; display: flex; align-items: center; gap: 4px;">
                                             <span>🔄</span> Reconnections (since restart):
                                         </span>
-                                        <span style="background: ${reconnects > 0 ? 'rgba(234, 179, 8, 0.18)' : 'rgba(255,255,255,0.06)'}; color: ${reconnects > 0 ? '#facc15' : '#cbd5e1'}; border: 1px solid ${reconnects > 0 ? 'rgba(234, 179, 8, 0.35)' : 'rgba(255,255,255,0.1)'}; padding: 1px 7px; border-radius: 10px; font-family: monospace; font-weight: 700;" title="No. of reconnections after the last server restart">
+                                        <span class="topo-reconnects" style="background: ${reconnects > 0 ? 'rgba(234, 179, 8, 0.18)' : 'rgba(255,255,255,0.06)'}; color: ${reconnects > 0 ? '#facc15' : '#cbd5e1'}; border: 1px solid ${reconnects > 0 ? 'rgba(234, 179, 8, 0.35)' : 'rgba(255,255,255,0.1)'}; padding: 1px 7px; border-radius: 10px; font-family: monospace; font-weight: 700;" title="No. of reconnections after the last server restart">
                                             ${reconnects}
                                         </span>
                                     </div>
@@ -1682,7 +1684,7 @@
                             </div>
 
                             <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06);">
-                                <span style="font-size: 0.72rem; color: #34d399; font-weight: 600;">
+                                <span class="topo-tag-count" style="font-size: 0.72rem; color: #34d399; font-weight: 600;">
                                     ${tagCount > 0 ? `✓ ${tagCount} Tags Active` : 'Ready to map tags'}
                                 </span>
                                 <button onclick="window.__removeTopoDev('${dev.id}', '${dev.name}')" style="background: transparent; border: none; color: #ef4444; font-size: 0.75rem; cursor: pointer; padding: 2px 6px; border-radius: 4px; opacity: 0.75; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.75'" title="Remove device from Plant Topology">
@@ -1703,6 +1705,48 @@
                 </div>
             `;
         });
+
+        // In-place DOM update check to eliminate flickering
+        const existingCards = Array.from(treeContainer.querySelectorAll('.topo-dev-card[data-dev-id]'));
+        const existingCardIds = existingCards.map(el => el.getAttribute('data-dev-id'));
+        const newCardIds = filteredDevices.map(d => String(d.id));
+        const idsMatch = existingCardIds.length === newCardIds.length && existingCardIds.every((id, idx) => id === newCardIds[idx]);
+
+        if (idsMatch && existingCards.length > 0) {
+            filteredDevices.forEach(dev => {
+                const card = treeContainer.querySelector(`.topo-dev-card[data-dev-id="${dev.id}"]`);
+                if (!card) return;
+                const telem = dev.telemetry || {};
+                const isConn = !!telem.connected;
+                const lastConnFormatted = telem.lastConnectedFormatted || (telem.lastConnected ? new Date(telem.lastConnected).toLocaleString() : 'Never connected');
+                const reconnects = typeof telem.reconnectCount === 'number' ? telem.reconnectCount : 0;
+                const dotColor = isConn ? '#10b981' : (telem.lastConnected ? '#f59e0b' : '#ef4444');
+                const tagCount = Object.keys(dev.tags || {}).length;
+
+                card.style.borderColor = isConn ? 'rgba(16, 185, 129, 0.35)' : 'rgba(255,255,255,0.1)';
+                const dot = card.querySelector('.topo-dot');
+                if (dot) {
+                    dot.style.background = dotColor;
+                    dot.style.boxShadow = `0 0 8px ${dotColor}`;
+                }
+                const lastConnEl = card.querySelector('.topo-last-conn');
+                if (lastConnEl) {
+                    lastConnEl.textContent = lastConnFormatted;
+                    lastConnEl.style.color = isConn ? '#4ade80' : (telem.lastConnected ? '#fde047' : '#94a3b8');
+                }
+                const reconnEl = card.querySelector('.topo-reconnects');
+                if (reconnEl) {
+                    reconnEl.textContent = reconnects;
+                    reconnEl.style.background = reconnects > 0 ? 'rgba(234, 179, 8, 0.18)' : 'rgba(255,255,255,0.06)';
+                    reconnEl.style.color = reconnects > 0 ? '#facc15' : '#cbd5e1';
+                }
+                const tagCountEl = card.querySelector('.topo-tag-count');
+                if (tagCountEl) {
+                    tagCountEl.textContent = tagCount > 0 ? `✓ ${tagCount} Tags Active` : 'Ready to map tags';
+                }
+            });
+            return;
+        }
 
         treeContainer.innerHTML = treeHtml;
     }
@@ -1985,8 +2029,8 @@
                 }
             }
 
-            // 3. If URL ends with /plugins, redirect to /editor
-            if (window.location.pathname.includes('/plugins')) {
+            // 3. If URL ends with /plugins on View Servers, redirect to /editor
+            if (!isStorageServer() && window.location.pathname.includes('/plugins')) {
                 window.location.href = getBasePath() + '/editor';
                 setTimeout(showStatutoryWarningModal, 400);
             }

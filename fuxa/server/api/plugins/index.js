@@ -59,10 +59,34 @@ module.exports = {
          * Install the plugin
          */
         pluginsApp.post("/api/plugins", secureFnc, function (req, res, next) {
-            return res.status(403).json({
-                error: "plugins_disabled",
-                message: "Adding connections facility is no longer supported; redirect to storage server instance for adding field PLC or gateway device. Once they added in respective storage server, device will be listed to the view page server automatically."
-            });
+            // View Servers cannot install plugins or add field connections directly
+            if (process.env.STORAGE_SERVER_URL) {
+                return res.status(403).json({
+                    error: "plugins_disabled",
+                    message: "Adding connections facility is no longer supported on View Servers; redirect to storage server instance for adding field PLC or gateway device. Once they added in respective storage server, device will be listed to the view page server automatically."
+                });
+            }
+            const permission = checkGroupsFnc(req);
+            if (res.statusCode === 403) {
+                runtime.logger.error("api post plugins: Token Expired");
+            } else if (!authJwt.haveAdminPermission(permission)) {
+                res.status(401).json({ error: "unauthorized_error", message: "Unauthorized!" });
+                runtime.logger.error("api post plugins: Unauthorized");
+            } else {
+                runtime.plugins.addPlugin(req.body.params, true).then(function (data) {
+                    if (runtime.devices && typeof runtime.devices.update === 'function') {
+                        runtime.devices.update();
+                    }
+                    res.end();
+                }).catch(function (err) {
+                    if (err.code) {
+                        res.status(400).json({ error: err.code, message: err.message });
+                    } else {
+                        res.status(400).json({ error: "unexpected_error", message: err.toString() });
+                    }
+                    runtime.logger.error("api install plugins: " + err.message);
+                });
+            }
         });
 
         /**

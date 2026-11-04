@@ -48,6 +48,7 @@
     "swagger-ui-express": "^5.0.1",
     "winston": "3.7.2",
     "ws": "^8.21.0",
+    "node-opcua": "^2.149.0",
     "yamljs": "^0.3.0"
   },
   "overrides": {

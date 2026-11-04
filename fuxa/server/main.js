@@ -287,9 +287,6 @@ const normalizeSocketIoUrl = (req) => {
     }
 };
 
-server.prependListener('request', normalizeSocketIoUrl);
-server.prependListener('upgrade', normalizeSocketIoUrl);
-
 const io = socketIO(server, {
     pingInterval: 60000,    // send ping interval
     pingTimeout: 120000,    // close connection if pong is not received
@@ -300,6 +297,30 @@ const io = socketIO(server, {
         credentials: false
     },
     path: ioSocketPath,
+});
+
+// CRITICAL FIX FOR AUTOMATIC FLICKERING / REFRESHING:
+// Express automatically returns 404 for unrouted requests.
+// We intercept '/socket.io' and pass it directly to Socket.IO engine before Express can 404 it!
+server.removeAllListeners('request');
+server.on('request', (req, res) => {
+    normalizeSocketIoUrl(req);
+    if (req.url && (req.url === '/socket.io' || req.url.startsWith('/socket.io/') || req.url.startsWith('/socket.io?'))) {
+        if (io.engine && typeof io.engine.handleRequest === 'function') {
+            return io.engine.handleRequest(req, res);
+        }
+    }
+    app(req, res);
+});
+
+server.removeAllListeners('upgrade');
+server.on('upgrade', (req, socket, head) => {
+    normalizeSocketIoUrl(req);
+    if (req.url && (req.url === '/socket.io' || req.url.startsWith('/socket.io/') || req.url.startsWith('/socket.io?'))) {
+        if (io.engine && typeof io.engine.handleUpgrade === 'function') {
+            return io.engine.handleUpgrade(req, socket, head);
+        }
+    }
 });
 
 // Check settings value
@@ -1069,8 +1090,13 @@ function startFuxa() {
                     app.post(BASE_PATH + '/api/storage/delete-topology-device', handleDeleteTopologyDevice);
                 }
 
-                const STATUTORY_WARNING = "Adding connections facility is no longer supported; redirect to storage server instance for adding field PLC or gateway device. Once they added in respective storage server, device will be listed to the view page server automatically.";
-                const blockPluginsHandler = (req, res) => res.status(403).json({ error: "plugins_disabled", message: STATUTORY_WARNING });
+                const STATUTORY_WARNING = "Adding connections facility is no longer supported on View Servers; redirect to storage server instance for adding field PLC or gateway device. Once they added in respective storage server, device will be listed to the view page server automatically.";
+                const blockPluginsHandler = (req, res, next) => {
+                    if (process.env.STORAGE_SERVER_URL) {
+                        return res.status(403).json({ error: "plugins_disabled", message: STATUTORY_WARNING });
+                    }
+                    next();
+                };
 
                 app.post('/api/plugins', blockPluginsHandler);
                 app.post('/api/plugins/*', blockPluginsHandler);
