@@ -487,6 +487,22 @@ def stop_instance(instance_id: str):
     port_engine.register_instance(instance_id, inst)
     return {"success": True, "status": "STOPPED"}
 
+@app.post("/api/storage/{plant_id}/restart")
+def restart_storage_master(plant_id: int):
+    storage_port = 5000 + plant_id * 100 if plant_id != 9 else 5900
+    storage_work_dir = os.path.join(INSTANCES_DIR, f"storage_plant_{plant_id}_{storage_port}")
+    inst_key = f"storage_p{plant_id}"
+    old_proc = running_processes.get(inst_key)
+    if old_proc and old_proc.poll() is None:
+        old_proc.terminate()
+        try:
+            old_proc.wait(timeout=3)
+        except Exception:
+            old_proc.kill()
+    time.sleep(0.5)
+    pid = _launch_fuxa_instance(inst_key, storage_port, storage_work_dir, f"/p{plant_id}/storage")
+    return {"success": True, "pid": pid, "port": storage_port}
+
 @app.post("/api/instances/{instance_id}/start")
 def start_instance(instance_id: str):
     instances = port_engine.get_all_instances()
