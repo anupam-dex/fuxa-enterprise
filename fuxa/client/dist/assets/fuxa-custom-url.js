@@ -39,7 +39,13 @@
         }
     } catch (e) {}
 
-    let liveProjectName = localStorage.getItem('fuxa_project_name') || '';
+    function getPathScopedStorageKey(prefix) {
+        const match = window.location.pathname.match(/^(\/p\d+\/[^/]+(?:\/[^/]+)?)/);
+        const sub = match ? match[1].replace(/\//g, '_') : (window.location.port ? `port_${window.location.port}` : 'root');
+        return `${prefix}_${sub}`;
+    }
+
+    let liveProjectName = localStorage.getItem(getPathScopedStorageKey('fuxa_project_name')) || '';
     let currentInstancePort = null;
     let isMutating = false;
 
@@ -158,7 +164,11 @@
                 body.fuxa-view-server app-device-list .table-scroll mat-cell:last-child,
                 body.fuxa-view-server app-device-list .table-scroll .mat-column-options,
                 body.fuxa-view-server app-device-list .daq-batch-toolbar,
-                body.fuxa-view-server #fuxa-batch-daq-toolbar {
+                body.fuxa-view-server #fuxa-batch-daq-toolbar,
+                body.fuxa-view-server app-device-map .device-delete,
+                body.fuxa-view-server app-device-map .device-edit,
+                body.fuxa-view-server app-device-map button[matTooltip*="remove"],
+                body.fuxa-view-server app-device-map button[matTooltip*="edit"] {
                     display: none !important;
                     pointer-events: none !important;
                 }
@@ -506,12 +516,59 @@
         }
     }
 
+    function getDeducePlantId() {
+        // 1. Check URL path e.g. /p9/storage or /p1/div1/l1 or /p9/ps/ems
+        const match = (window.location.pathname || '').match(/\/p(\d+)\//);
+        if (match) return parseInt(match[1], 10);
+
+        // 2. Check base path
+        const base = (getBasePath() || '');
+        const baseMatch = base.match(/\/p(\d+)\//);
+        if (baseMatch) return parseInt(baseMatch[1], 10);
+
+        // 3. Check port
+        const port = parseInt(window.location.port, 10);
+        if (port === 5100) return 1;
+        if (port === 5200) return 2;
+        if (port === 5300) return 3;
+        if (port === 5400) return 4;
+        if (port === 5900) return 9;
+        if (port >= 9600 && port < 9700) {
+            return parseInt(String(port)[0], 10);
+        }
+        return 9;
+    }
+
+    function formatBrowserTitle(projectName) {
+        const plantId = getDeducePlantId();
+        const plantStr = `Plant ${plantId}`;
+
+        if (isStorageServer()) {
+            return `Central Storage Master - ${plantStr} | TVS SCADA`;
+        }
+
+        let baseName = (projectName || '').trim();
+        if (!baseName || baseName.toLowerCase() === 'fuxa') {
+            const path = (window.location.pathname || '').toLowerCase();
+            if (path.includes('/ems')) baseName = 'EMS';
+            else if (path.includes('/pted')) baseName = 'PTED';
+            else if (path.includes('/tc')) baseName = 'TopCoat';
+            else baseName = 'SCADA Line';
+        }
+
+        // Clean any existing trailing plant or TVS SCADA suffix
+        baseName = baseName.replace(/\s*\|\s*TVS\s*SCADA\s*$/i, '');
+        baseName = baseName.replace(/\s*-\s*TVS\s*SCADA\s*$/i, '');
+        baseName = baseName.replace(new RegExp(`\\s*-\\s*Plant\\s*${plantId}\\s*$`, 'i'), '').trim();
+
+        return `${baseName} - ${plantStr} | TVS SCADA`;
+    }
+
     function updateHeaderBadge(name) {
         ensureTvsHeaderLogo();
         const badge = document.getElementById('fuxa-header-project-badge');
         if (badge) badge.remove();
-        if (!name) return;
-        document.title = `${name} - TVS SCADA`;
+        document.title = formatBrowserTitle(name);
     }
 
     async function fetchLiveProjectName() {
@@ -525,7 +582,7 @@
                 }
                 if (data.name) {
                     liveProjectName = data.name;
-                    localStorage.setItem('fuxa_project_name', liveProjectName);
+                    localStorage.setItem(getPathScopedStorageKey('fuxa_project_name'), liveProjectName);
                     updateHeaderBadge(liveProjectName);
                     return liveProjectName;
                 }
@@ -541,13 +598,14 @@
                     }
                     if (data2.name) {
                         liveProjectName = data2.name;
-                        localStorage.setItem('fuxa_project_name', liveProjectName);
+                        localStorage.setItem(getPathScopedStorageKey('fuxa_project_name'), liveProjectName);
                         updateHeaderBadge(liveProjectName);
                         return liveProjectName;
                     }
                 }
             } catch (e2) {}
         }
+        updateHeaderBadge(liveProjectName);
         return liveProjectName || 'SCADA Line';
     }
 
@@ -555,7 +613,7 @@
         if (!newName || !newName.trim()) return;
         const cleanName = newName.trim();
         liveProjectName = cleanName;
-        localStorage.setItem('fuxa_project_name', cleanName);
+        localStorage.setItem(getPathScopedStorageKey('fuxa_project_name'), cleanName);
         updateHeaderBadge(cleanName);
 
         const currentPort = getTargetPort();
@@ -1111,10 +1169,15 @@
     }
 
     function isStorageServer() {
-        const port = parseInt(window.location.port, 10) || currentInstancePort || parseInt(localStorage.getItem('fuxa_target_port') || '0', 10);
-        if ([5100, 5200, 5300, 5400, 5900].includes(port)) return true;
         const path = (window.location.pathname || '').toLowerCase();
         if (path.includes('/storage')) return true;
+        // View server subpaths like /p9/ps/ems or /p9/div6/l1 are NEVER storage servers
+        if (path.match(/\/p\d+\/(?:ps|div\d+)/)) return false;
+
+        const port = parseInt(window.location.port, 10);
+        if (port && [5100, 5200, 5300, 5400, 5900].includes(port)) return true;
+        if (port && port >= 9600 && port < 9700) return false;
+
         const base = (getBasePath() || '').toLowerCase();
         if (base.includes('/storage')) return true;
         return false;
@@ -2272,7 +2335,7 @@
                 nameSaveBtn.style.background = '#0284c7';
             }
             await saveProjectName(updatedName);
-            document.title = `${updatedName} - TVS SCADA`;
+            document.title = formatBrowserTitle(updatedName);
             ensureTvsHeaderLogo();
             if (nameSaveBtn) {
                 nameSaveBtn.textContent = 'Active! ✓';
@@ -2795,6 +2858,7 @@
             document.body.classList.toggle('fuxa-storage-server', isStorageServer());
             document.body.classList.toggle('fuxa-view-server', !isStorageServer());
         }
+        document.title = formatBrowserTitle(liveProjectName);
         removeHeaderPageUrlButton();
         const staleBadge = document.getElementById('fuxa-header-project-badge');
         if (staleBadge) staleBadge.remove();
@@ -2852,13 +2916,22 @@
 
         function getSelectedDevName() {
             const select = filterEl.querySelector('mat-select');
-            if (!select) return '';
-            const textSpan = select.querySelector('.mat-mdc-select-value-text, .mat-mdc-select-value, .mat-select-value-text, .mat-select-value, span[class*="select-value"]');
-            let txt = textSpan ? (textSpan.textContent || '').trim() : '';
-            if (!txt) {
-                txt = (select.textContent || '').trim();
+            if (select) {
+                const textSpan = select.querySelector('.mat-mdc-select-value-text, .mat-mdc-select-value, .mat-select-value-text, .mat-select-value, span[class*="select-value"]');
+                let txt = textSpan ? (textSpan.textContent || '').trim() : '';
+                if (!txt) txt = (select.textContent || '').trim();
+                txt = txt.split('\n')[0].trim();
+                if (txt && !txt.toLowerCase().includes('connection')) return txt;
             }
-            return txt.split('\n')[0].trim();
+
+            // Fallback: Check device name from the active table rows
+            const firstRowDevCell = devList.querySelector('mat-cell.cdk-column-device, td.cdk-column-device, .mat-column-device');
+            if (firstRowDevCell) {
+                const txt = (firstRowDevCell.textContent || '').trim();
+                if (txt) return txt;
+            }
+
+            return '';
         }
 
         const currentDevName = getSelectedDevName();
@@ -2922,10 +2995,14 @@
                     if (!res || !res.ok) throw new Error('Could not fetch project data');
                     const project = await res.json();
                     const devices = project.devices || {};
-                    const dev = Object.values(devices).find(d => 
-                        (d.name && d.name.trim() === targetDevName) ||
-                        (d.id && d.id.trim() === targetDevName)
+                    let dev = Object.values(devices).find(d => 
+                        (d.name && d.name.trim().toLowerCase() === targetDevName.toLowerCase()) ||
+                        (d.id && d.id.trim().toLowerCase() === targetDevName.toLowerCase())
                     );
+                    if (!dev) {
+                        const nonServerDevs = Object.values(devices).filter(d => d.type !== 'FuxaServer' && d.id !== 'server');
+                        if (nonServerDevs.length === 1) dev = nonServerDevs[0];
+                    }
                     if (!dev) throw new Error(`Device "${targetDevName}" not found in project`);
 
                     const tags = dev.tags || {};
@@ -2997,10 +3074,14 @@
                     if (!res || !res.ok) throw new Error('Could not fetch project data');
                     const project = await res.json();
                     const devices = project.devices || {};
-                    const dev = Object.values(devices).find(d => 
-                        (d.name && d.name.trim() === targetDevName) ||
-                        (d.id && d.id.trim() === targetDevName)
+                    let dev = Object.values(devices).find(d => 
+                        (d.name && d.name.trim().toLowerCase() === targetDevName.toLowerCase()) ||
+                        (d.id && d.id.trim().toLowerCase() === targetDevName.toLowerCase())
                     );
+                    if (!dev) {
+                        const nonServerDevs = Object.values(devices).filter(d => d.type !== 'FuxaServer' && d.id !== 'server');
+                        if (nonServerDevs.length === 1) dev = nonServerDevs[0];
+                    }
                     if (!dev) return;
 
                     const tags = dev.tags || {};
@@ -3128,6 +3209,7 @@
         enforceViewPropertyLayout();
         ensureEditorToolIcons();
         ensureBatchDaqControlOnTagList();
+        document.title = formatBrowserTitle(liveProjectName);
 
         // Prevent FUXA core socket reconnect from auto-reloading while modal dialogs are open
         if (document.querySelector('.cdk-overlay-pane, mat-dialog-container, app-view-property, app-app-settings')) {
