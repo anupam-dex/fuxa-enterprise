@@ -846,6 +846,27 @@ def add_sim_to_storage(server_id: str):
     conn.commit()
     conn.close()
 
+    # Gracefully restart storage master so FUXA immediately acquires the device & tags
+    try:
+        storage_inst_id = f"storage_p{plant_id}"
+        if storage_inst_id in running_processes:
+            try:
+                running_processes[storage_inst_id].terminate()
+                running_processes[storage_inst_id].wait(timeout=2)
+            except Exception:
+                pass
+        for p in psutil.process_iter(['pid', 'name']):
+            try:
+                for c in p.net_connections():
+                    if c.laddr.port == storage_port:
+                        p.kill()
+            except Exception:
+                pass
+        time.sleep(0.5)
+        _launch_fuxa_instance(storage_inst_id, storage_port, storage_work_dir, f"/p{plant_id}/storage")
+    except Exception as e:
+        logger.warning(f"Storage master hot-reload notice: {e}")
+
     return {
         "success": True,
         "message": f"Successfully mapped {dev_name} ({len(tags_dict)} tags) into Plant {plant_id} Storage Server (: {storage_port})!",
