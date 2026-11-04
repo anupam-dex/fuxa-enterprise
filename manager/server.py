@@ -16,7 +16,7 @@ import asyncio
 import psutil
 import subprocess
 import logging
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
@@ -953,13 +953,29 @@ def api_download_backup(filename: str):
     return FileResponse(path, filename=safe_name, media_type="application/gzip")
 
 @app.post("/api/backup/upload")
-async def api_upload_backup(file: UploadFile = File(...)):
+async def api_upload_backup(request: Request):
     """Uploads an external .tar.gz snapshot into the backups repository"""
-    if not file.filename.endswith(".tar.gz"):
-        raise HTTPException(status_code=400, detail="Only .tar.gz backup files supported")
-    safe_name = os.path.basename(file.filename)
+    content_type = request.headers.get("content-type", "")
+    filename = request.query_params.get("filename") or request.headers.get("x-filename") or f"uploaded_backup_{int(time.time())}.tar.gz"
+
+    if "multipart/form-data" in content_type:
+        try:
+            form = await request.form()
+            file_obj = form.get("file")
+            if file_obj and hasattr(file_obj, "filename"):
+                filename = file_obj.filename
+                content = await file_obj.read()
+            else:
+                content = await request.body()
+        except Exception:
+            content = await request.body()
+    else:
+        content = await request.body()
+
+    if not filename.endswith(".tar.gz"):
+        filename = filename + ".tar.gz"
+    safe_name = os.path.basename(filename)
     dest_path = os.path.join(BACKUPS_DIR, safe_name)
-    content = await file.read()
     with open(dest_path, "wb") as f:
         f.write(content)
     return {"success": True, "filename": safe_name, "size_kb": round(len(content) / 1024, 2)}

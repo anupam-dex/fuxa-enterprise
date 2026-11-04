@@ -13,9 +13,9 @@ VENV_PYTHON="$SCRIPT_DIR/venv/bin/python3"
 if [ ! -f "$VENV_PYTHON" ]; then
     echo "Creating Python virtualenv..."
     python3 -m venv "$SCRIPT_DIR/venv"
-    "$SCRIPT_DIR/venv/bin/pip" install --upgrade pip fastapi uvicorn asyncua psutil requests jinja2 aiofiles
+    "$SCRIPT_DIR/venv/bin/pip" install --upgrade pip fastapi uvicorn asyncua psutil requests jinja2 aiofiles python-multipart
 else
-    "$SCRIPT_DIR/venv/bin/pip" install -q aiofiles 2>/dev/null || true
+    "$SCRIPT_DIR/venv/bin/pip" install -q aiofiles python-multipart 2>/dev/null || true
 fi
 
 # Stop and disable system nginx if running on Port 80
