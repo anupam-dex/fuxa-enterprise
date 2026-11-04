@@ -1089,11 +1089,19 @@
             const dev = devicesList.find(d => d.name === name || (d.property && d.property.address === name));
             if (!dev || !dev.telemetry) return;
 
+            // Ensure native action buttons (edit, link, delete) stay completely on top and clickable
+            const buttons = node.querySelectorAll('.device-edit, .device-list, .device-delete');
+            buttons.forEach(btn => {
+                btn.style.setProperty('z-index', '10', 'important');
+                btn.style.setProperty('cursor', 'pointer', 'important');
+            });
+
+            // Position telemetry plate cleanly BELOW the 90px card so it NEVER overlaps buttons
             let badge = node.querySelector('.fuxa-native-telem-badge');
             if (!badge) {
                 badge = document.createElement('div');
                 badge.className = 'fuxa-native-telem-badge';
-                badge.style.cssText = 'font-size: 10px; color: #94a3b8; margin: 4px 6px; line-height: 1.35; font-family: monospace; text-align: left; background: rgba(0,0,0,0.5); padding: 3px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.1); pointer-events: none;';
+                badge.style.cssText = 'position: absolute; top: 96px; left: 0; width: 100%; box-sizing: border-box; background: #161b24; border: 1px solid #374151; border-radius: 4px; padding: 4px 6px; font-size: 10px; line-height: 1.35; font-family: monospace; text-align: left; pointer-events: none; z-index: 2; box-shadow: 0 4px 10px rgba(0,0,0,0.35);';
                 node.appendChild(badge);
             }
             const telem = dev.telemetry;
@@ -1105,7 +1113,7 @@
             const cbText = cb.state === 'OPEN' ? `OPEN (${cb.nextRetryInSeconds || 0}s)` : (cb.state === 'HALF_OPEN' ? 'TRIAL' : 'OK');
 
             badge.innerHTML = `
-                <div style="color: ${isConn ? '#4ade80' : (telem.lastConnected ? '#fde047' : '#ef4444')}; font-weight: 600;">🕒 ${lastConn}</div>
+                <div style="color: ${isConn ? '#4ade80' : (telem.lastConnected ? '#fde047' : '#ef4444')}; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">🕒 ${lastConn}</div>
                 <div style="display: flex; justify-content: space-between; gap: 6px; margin-top: 2px;">
                     <span style="color: #cbd5e1;">🔄 Rec: <strong>${reconns}</strong></span>
                     <span style="color: ${cbColor}; font-weight: 700;">🛡️ ${cbText}</span>
@@ -1806,52 +1814,28 @@
     };
 
     function renderStorageServerTopologicalView() {
-        // 1. Immediately remove the old clunky foreign hub if present
+        // 1. Immediately remove any legacy foreign overlays
         const oldHub = document.getElementById('fuxa-storage-topological-hub');
         if (oldHub) oldHub.remove();
         const oldBanner = document.getElementById('fuxa-storage-master-banner');
         if (oldBanner) oldBanner.remove();
+        const oldNativeBanner = document.getElementById('fuxa-storage-native-banner');
+        if (oldNativeBanner) oldNativeBanner.remove();
 
         if (!window.location.pathname.includes('/device')) return;
         const workPanel = document.querySelector('app-device .work-panel, app-device');
         if (!workPanel) return;
 
-        // 2. Insert a sleek, 100% native FUXA-themed header banner above workPanel
-        const deviceComp = document.querySelector('app-device');
-        if (deviceComp && !document.getElementById('fuxa-storage-native-banner')) {
+        // 2. Cleanly enhance native FUXA header without injecting disruptive DOM elements
+        const headerPanel = document.querySelector('app-device .header-panel');
+        if (headerPanel && !headerPanel.dataset.storageTagged) {
+            headerPanel.dataset.storageTagged = 'true';
             const port = parseInt(window.location.port, 10) || currentInstancePort || 5900;
             let plantNum = '9';
             if (port >= 5100 && port <= 5900) {
                 plantNum = String(Math.round((port - 5000) / 100));
             }
-
-            const banner = document.createElement('div');
-            banner.id = 'fuxa-storage-native-banner';
-            banner.style.cssText = 'background: #232830; border-bottom: 1px solid #3c424f; padding: 8px 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; font-size: 12.5px; color: #d1d5db; font-family: Roboto, -apple-system, sans-serif; box-sizing: border-box; z-index: 10;';
-
-            banner.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <span style="display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #10b981; box-shadow: 0 0 6px #10b981;"></span>
-                    <span style="font-weight: 600; color: #38bdf8; font-size: 13px;">Storage Server Master &bull; Plant ${plantNum}</span>
-                    <span style="color: #475569;">|</span>
-                    <span style="color: #94a3b8; font-size: 12px;">Connected devices log to InfluxDB & sync tags to View Servers</span>
-                </div>
-                <div style="display: flex; align-items: center; gap: 16px; font-size: 12px; color: #94a3b8;">
-                    <span style="display: flex; align-items: center; gap: 4px;">
-                        <span style="color: #38bdf8;">✏️</span> Click <strong>Edit</strong> on a device to configure IP & port
-                    </span>
-                    <span style="display: flex; align-items: center; gap: 4px;">
-                        <span style="color: #10b981;">🔗</span> Click <strong>Link</strong> on a device to view & browse tags
-                    </span>
-                    <span style="display: flex; align-items: center; gap: 4px;">
-                        <span style="color: #fbbf24;">🛡️</span> Smart Backoff Active
-                    </span>
-                </div>
-            `;
-
-            if (workPanel.parentElement) {
-                workPanel.parentElement.insertBefore(banner, workPanel);
-            }
+            headerPanel.innerHTML = `<mat-icon style="vertical-align: middle; margin-right: 6px;">lan</mat-icon> Connections settings &bull; Plant ${plantNum} Central Storage Master`;
         }
 
         // 3. Fetch telemetry to enhance the native FUXA device cards
