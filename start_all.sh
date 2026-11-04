@@ -64,7 +64,9 @@ if [ ! -d "$SCRIPT_DIR/fuxa/server/node_modules/node-opcua" ]; then
     npm install node-opcua@^2.149.0 --no-audit --no-fund --omit=dev || true
     cd "$SCRIPT_DIR"
 fi
-chmod -R a+rw "$SCRIPT_DIR/fuxa/server/node_modules" 2>/dev/null || true
+ORIG_USER=$(stat -c '%u:%g' "$SCRIPT_DIR" 2>/dev/null || echo "1000:1000")
+chown -R "$ORIG_USER" "$SCRIPT_DIR/fuxa/server/node_modules" 2>/dev/null || true
+chmod -R 777 "$SCRIPT_DIR/fuxa/server/node_modules" 2>/dev/null || true
 
 echo "=========================================================================="
 echo " 1. Starting FUXA Central Storage OPC-UA Bridge..."
