@@ -39,10 +39,10 @@
       "division": 6,
       "line": 1,
       "port": 9610,
-      "subpath": "/p9/div6/l1",
+      "subpath": "/p9/ps/oven",
       "status": "RUNNING",
-      "editor_url": "/p9/div6/l1/editor",
-      "home_url": "/p9/div6/l1/home"
+      "editor_url": "/p9/ps/oven/editor",
+      "home_url": "/p9/ps/oven/home"
     },
     "fuxa_p9_d6_l1_9611": {
       "id": "fuxa_p9_d6_l1_9611",

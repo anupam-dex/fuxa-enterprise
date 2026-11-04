@@ -35,6 +35,7 @@ var DISABLE_POLLING_INTERVAL = -1;              // disable polling
 var fncGetDeviceProperty;
 
 function Device(data, runtime) {
+    var self = this;
     var property = { id: data.id, name: data.name, type: data.type };   // Device property (name, id)
     var status = DeviceStatusEnum.INIT;                     // Current status (StateMachine)
     var logger = runtime.logger;                            // Logger
@@ -52,6 +53,89 @@ function Device(data, runtime) {
     var totalConnections = 0;                               // Total successful connections since server restart
     var reconnectCount = 0;                                 // Reconnections after initial connection since server restart
     var lastConnectedTimestamp = null;                      // Timestamp (ms) of the last successful connection
+
+    // =========================================================================
+    // Diagnostics & Disconnection Root Cause Tracking Engine
+    // =========================================================================
+    var serverStartTime = Date.now();
+    var disconnectionHistory = []; // max 25 entries: { id, timestamp, timestampFormatted, code, reason, status, durationMs, resolvedAtFormatted }
+    var currentDisconnection = null;
+
+    function classifyErrorCode(errOrMsg) {
+        if (!errOrMsg) return { code: 'UNKNOWN_COMM_ERR', description: 'Communication failure' };
+        const text = (errOrMsg.message || String(errOrMsg)).toLowerCase();
+        if (text.includes('etimedout') || text.includes('timed out') || text.includes('timeout') && !text.includes('watchdog')) {
+            return { code: 'ETIMEDOUT', description: 'TCP connection timed out (network latency or packet drop)' };
+        }
+        if (text.includes('econnrefused') || text.includes('connection refused')) {
+            return { code: 'ECONNREFUSED', description: 'Port unreachable / refused (PLC application offline or port closed)' };
+        }
+        if (text.includes('ehostunreach') || text.includes('host unreachable') || text.includes('enetunreach')) {
+            return { code: 'EHOSTUNREACH', description: 'Host unreachable (network cable or router disconnected)' };
+        }
+        if (text.includes('badsessionclosed') || text.includes('session closed')) {
+            return { code: 'BAD_SESSION_CLOSED', description: 'OPC-UA server terminated session (timeout or max clients reached)' };
+        }
+        if (text.includes('badcertificate') || text.includes('security check failed')) {
+            return { code: 'BAD_CERTIFICATE', description: 'OPC-UA security certificate rejected or expired' };
+        }
+        if (text.includes('keepalive')) {
+            return { code: 'KEEPALIVE_FAILURE', description: 'OPC-UA heartbeat keepalive failed' };
+        }
+        if (text.includes('watchdog') || text.includes('stale socket')) {
+            return { code: 'WATCHDOG_TIMEOUT', description: 'Telemetry frozen: No tag response received (stale zombie socket cleared)' };
+        }
+        if (text.includes('crc') || text.includes('checksum')) {
+            return { code: 'CRC_CHECKSUM_ERROR', description: 'Modbus serial/TCP CRC checksum frame corruption' };
+        }
+        if (text.includes('econnreset') || text.includes('socket hang up') || text.includes('reset by peer')) {
+            return { code: 'ECONNRESET', description: 'Connection reset by remote peer (PLC reboot or socket closed)' };
+        }
+        if (text.includes('manual')) {
+            return { code: 'MANUAL_RECONNECT', description: 'Reconnection manually triggered by operator' };
+        }
+        return { code: 'COMM_FAILURE', description: errOrMsg.message || String(errOrMsg) };
+    }
+
+    function recordDisconnection(reason, explicitCode) {
+        const now = Date.now();
+        const classified = classifyErrorCode(reason);
+        const code = explicitCode || classified.code;
+        const desc = (typeof reason === 'string') ? reason : (reason && reason.message) ? reason.message : classified.description;
+
+        // Debounce if an active failure is already logged within last 3 seconds
+        if (currentDisconnection && (now - currentDisconnection.timestamp < 3000)) {
+            currentDisconnection.reason = desc;
+            currentDisconnection.code = code;
+            return;
+        }
+
+        const record = {
+            id: 'err_' + now + '_' + Math.floor(Math.random() * 1000),
+            timestamp: now,
+            timestampFormatted: new Date(now).toLocaleString(),
+            code: code,
+            reason: desc,
+            status: 'ACTIVE_FAILURE',
+            durationMs: null
+        };
+        currentDisconnection = record;
+        disconnectionHistory.unshift(record);
+        if (disconnectionHistory.length > 25) {
+            disconnectionHistory.pop();
+        }
+    }
+
+    function markResolved() {
+        if (currentDisconnection && currentDisconnection.status === 'ACTIVE_FAILURE') {
+            const now = Date.now();
+            currentDisconnection.status = 'RECONNECTED';
+            currentDisconnection.resolvedAt = now;
+            currentDisconnection.resolvedAtFormatted = new Date(now).toLocaleString();
+            currentDisconnection.durationMs = now - currentDisconnection.timestamp;
+            currentDisconnection = null;
+        }
+    }
 
     // =========================================================================
     // OT Reliability: Exponential Backoff Circuit Breaker for Field Devices
@@ -166,6 +250,17 @@ function Device(data, runtime) {
     if (!comm) {
         return null;
     }
+
+    if (events && typeof events.on === 'function') {
+        events.on('device-status:changed', function (ev) {
+            if (ev && ev.id === property.id) {
+                if (ev.status === 'connect-error' || ev.status === 'connect-failed') {
+                    const err = ev.error || 'Communication failure reported by protocol driver';
+                    recordDisconnection(err);
+                }
+            }
+        });
+    }
     /**
      * Start StateMachine, init and start TimerInterval to check Device status
      */
@@ -227,7 +322,28 @@ function Device(data, runtime) {
             const backoffMs = BACKOFF_DELAYS[0];
             nextRetryTimestamp = now + backoffMs;
             circuitState = CircuitState.OPEN;
+            recordDisconnection('Socket closed or connection dropped unexpectedly by remote PLC/host', 'CONNECTION_LOST');
             logger.warn(`[CIRCUIT-BREAKER] Device '${property.name}' connection lost! Trip circuit OPEN (Retry in ${backoffMs/1000}s).`);
+        }
+
+        // 1b. Watchdog: detect zombie sockets (where comm.isConnected() is true but lastRead is completely frozen)
+        var lastRead = comm.lastReadTimestamp() || 0;
+        var stallThreshold = Math.max(pollingInterval * 4, 15000);
+        if (status === DeviceStatusEnum.IDLE && comm.isConnected() && lastRead > 0 && (now - lastRead > stallThreshold)) {
+            const frozenSeconds = Math.round((now - lastRead) / 1000);
+            logger.warn(`[WATCHDOG] Device '${property.name}' frozen: no tag updates in ${frozenSeconds}s despite socket claiming connected. Forcing socket reset to heal.`);
+            recordDisconnection(`Telemetry frozen: No tag response in ${frozenSeconds}s (stale socket overrun)`, 'WATCHDOG_TIMEOUT');
+            status = DeviceStatusEnum.INIT;
+            if (devicePolling) {
+                clearInterval(devicePolling);
+                devicePolling = null;
+            }
+            circuitState = CircuitState.OPEN;
+            consecutiveFailures = Math.max(consecutiveFailures, 1);
+            nextRetryTimestamp = now + BACKOFF_DELAYS[0];
+            try {
+                comm.disconnect().catch(() => {});
+            } catch (_) {}
         }
 
         // 2. If disconnected and starting, enforce circuit breaker backoff
@@ -242,7 +358,6 @@ function Device(data, runtime) {
                 logger.info(`[CIRCUIT-BREAKER] Device '${property.name}' testing connection (Circuit HALF-OPEN)...`);
             }
 
-            const self = this;
             deviceConnecting = true;
             this.connect().then(() => {
                 if (currentCmd !== DeviceCmdEnum.START) {
@@ -251,6 +366,7 @@ function Device(data, runtime) {
                 if (circuitState !== CircuitState.CLOSED || consecutiveFailures > 0) {
                     logger.info(`[CIRCUIT-BREAKER] Device '${property.name}' connected successfully! Circuit CLOSED - full acquisition active.`);
                 }
+                markResolved();
                 circuitState = CircuitState.CLOSED;
                 consecutiveFailures = 0;
                 nextRetryTimestamp = 0;
@@ -266,6 +382,9 @@ function Device(data, runtime) {
                 const backoffMs = BACKOFF_DELAYS[delayIndex];
                 nextRetryTimestamp = Date.now() + backoffMs;
                 circuitState = CircuitState.OPEN;
+
+                const errMsg = (err && err.message) ? err.message : String(err || 'Unknown connection error');
+                recordDisconnection(errMsg);
 
                 logger.error(`[CIRCUIT-BREAKER] Device '${property.name}' connect failure #${consecutiveFailures}: ${err}. Circuit OPEN (Next retry in ${backoffMs/1000}s).`);
                 if (tryToConnect++ > 3) {
@@ -379,10 +498,25 @@ function Device(data, runtime) {
         const nextRetrySec = (circuitState === CircuitState.OPEN && nextRetryTimestamp > now)
             ? Math.round((nextRetryTimestamp - now) / 1000)
             : 0;
+
+        // Calculate device uptime percentage since server started
+        const totalUptimeSec = Math.max(1, Math.round((now - serverStartTime) / 1000));
+        let totalDowntimeMs = 0;
+        for (const evt of disconnectionHistory) {
+            if (evt.durationMs) {
+                totalDowntimeMs += evt.durationMs;
+            } else if (evt.status === 'ACTIVE_FAILURE') {
+                totalDowntimeMs += (now - evt.timestamp);
+            }
+        }
+        const downtimeSec = Math.round(totalDowntimeMs / 1000);
+        const uptimePercent = Math.max(0, Math.min(100, Math.round(((totalUptimeSec - Math.min(totalUptimeSec, downtimeSec)) / totalUptimeSec) * 1000) / 10));
+
         return {
             id: property.id,
             name: property.name,
             type: property.type,
+            address: (data.property && data.property.address) || '',
             connected: isConn,
             connectionStatus: connectionStatus,
             lastConnected: lastConnectedTimestamp,
@@ -393,9 +527,30 @@ function Device(data, runtime) {
                 state: circuitState,
                 failures: consecutiveFailures,
                 nextRetryInSeconds: nextRetrySec
-            }
+            },
+            uptimePercent: isNaN(uptimePercent) ? 100 : uptimePercent,
+            currentDisconnection: currentDisconnection,
+            disconnectionHistory: disconnectionHistory.slice(0, 20)
         };
     }
+
+    /**
+     * Force immediate reconnection & clear stale socket queues
+     */
+    this.forceReconnect = async function (reason) {
+        const triggerReason = reason || 'Operator manual UI reset';
+        recordDisconnection(triggerReason, 'MANUAL_RECONNECT');
+        logger.info(`[FORCE-RECONNECT] Initiating force reconnect for '${property.name}' (Reason: ${triggerReason})...`);
+        try {
+            await self.stop();
+        } catch (_) {}
+        circuitState = CircuitState.HALF_OPEN;
+        consecutiveFailures = 0;
+        nextRetryTimestamp = 0;
+        deviceConnecting = false;
+        self.start();
+        return { success: true, message: `Reconnection initiated for ${property.name}` };
+    };
 
     /**
      * Call Device to set Tag value

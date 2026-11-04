@@ -482,6 +482,21 @@ def stop_instance(instance_id: str):
         except Exception:
             pass
 
+    port = inst.get("port")
+    if port:
+        os.system(f"fuser -k -9 {port}/tcp 2>/dev/null")
+        for p in psutil.process_iter(['pid']):
+            try:
+                for conn in p.connections(kind='inet'):
+                    if conn.laddr.port == port:
+                        p.terminate()
+                        try:
+                            p.wait(timeout=2)
+                        except Exception:
+                            p.kill()
+            except Exception:
+                pass
+
     inst["status"] = "STOPPED"
     inst["user_stopped"] = True
     inst["pid"] = None
@@ -500,6 +515,20 @@ def restart_storage_master(plant_id: int):
             old_proc.wait(timeout=3)
         except Exception:
             old_proc.kill()
+    # Force clean port
+    os.system(f"fuser -k -9 {storage_port}/tcp 2>/dev/null")
+    # Also ensure any lingering process on the port is cleaned up
+    for p in psutil.process_iter(['pid']):
+        try:
+            for conn in p.connections(kind='inet'):
+                if conn.laddr.port == storage_port:
+                    p.terminate()
+                    try:
+                        p.wait(timeout=2)
+                    except Exception:
+                        p.kill()
+        except Exception:
+            pass
     time.sleep(0.5)
     pid = _launch_fuxa_instance(inst_key, storage_port, storage_work_dir, f"/p{plant_id}/storage")
     return {"success": True, "pid": pid, "port": storage_port}
@@ -729,6 +758,12 @@ def api_connect_storage_device(req: ConnectDeviceRequest):
                 conn.commit()
                 conn.close()
                 logger.info(f"Connected storage device '{matched_device['name']}' into {db_path}")
+
+                # Mirror into _appdata where FUXA server reads it
+                appdata_db = os.path.join(w_dir, "_appdata", "project.fuxap.db")
+                if os.path.exists(os.path.dirname(appdata_db)):
+                    import shutil
+                    shutil.copyfile(db_path, appdata_db)
             except Exception as e:
                 logger.error(f"Error connecting device into {db_path}: {e}")
 

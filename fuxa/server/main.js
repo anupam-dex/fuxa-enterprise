@@ -987,7 +987,11 @@ function startFuxa() {
                                         lastConnected: telem.lastConnected || null,
                                         lastConnectedFormatted: telem.lastConnectedFormatted || (telem.lastConnected ? new Date(telem.lastConnected).toLocaleString() : 'Never connected'),
                                         reconnectCount: typeof telem.reconnectCount === 'number' ? telem.reconnectCount : 0,
-                                        totalConnections: telem.totalConnections || 0
+                                        totalConnections: telem.totalConnections || 0,
+                                        circuitBreaker: telem.circuitBreaker || { state: 'CLOSED', failures: 0, nextRetryInSeconds: 0 },
+                                        uptimePercent: typeof telem.uptimePercent === 'number' ? telem.uptimePercent : 100,
+                                        currentDisconnection: telem.currentDisconnection || null,
+                                        disconnectionHistory: telem.disconnectionHistory || []
                                     };
                                     devices.push(dev);
                                 } catch (_) {}
@@ -1016,13 +1020,36 @@ function startFuxa() {
                     return res.json({ telemetry: telem, serverTime: Date.now() });
                 };
 
+                const handleDeviceReconnect = async (req, res) => {
+                    res.setHeader('Access-Control-Allow-Origin', '*');
+                    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+                    res.setHeader('Access-Control-Allow-Headers', '*');
+                    if (req.method === 'OPTIONS') return res.sendStatus(204);
+
+                    try {
+                        const body = req.body || {};
+                        const deviceId = body.deviceId || body.id;
+                        const reason = body.reason || 'Operator UI Diagnostics Reset';
+                        if (!deviceId) return res.status(400).json({ error: 'deviceId is required' });
+
+                        if (runtime.devices && typeof runtime.devices.forceReconnectDevice === 'function') {
+                            const result = await runtime.devices.forceReconnectDevice(deviceId, reason);
+                            return res.json(result);
+                        } else {
+                            return res.status(500).json({ error: 'forceReconnectDevice handler not available' });
+                        }
+                    } catch (e) {
+                        return res.status(500).json({ error: e.message });
+                    }
+                };
+
                 const handleAddTopologyDevice = (req, res) => {
                     res.setHeader('Access-Control-Allow-Origin', '*');
                     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
                     res.setHeader('Access-Control-Allow-Headers', '*');
                     if (req.method === 'OPTIONS') return res.sendStatus(204);
 
-                    const { name, type, property, topology, enabled } = req.body || {};
+                    const { name, type, property, topology, enabled, location, subdivision } = req.body || {};
                     if (!name || !type) {
                         return res.status(400).json({ error: 'Device name and type are required' });
                     }
@@ -1032,36 +1059,54 @@ function startFuxa() {
                     const lineId = topology && topology.line ? parseInt(topology.line, 10) : 1;
                     const devId = `dev_${type.toLowerCase().replace(/[^a-z0-9]/g, '')}_p${plantId}_d${divId}_l${lineId}_${Date.now()}`;
 
+                    const assignedLoc = (location || (property && property.location) || (topology && topology.location) || 'Paintshop (Div 6)').trim();
+                    const assignedSubdiv = (subdivision || (property && property.subdivision) || (topology && topology.subdivision) || 'Line 1').trim();
+
                     const newDevice = {
                         id: devId,
                         name: name.trim(),
                         type: type,
                         enabled: enabled !== false,
-                        property: property || {},
+                        location: assignedLoc,
+                        subdivision: assignedSubdiv,
+                        property: {
+                            ...(property || {}),
+                            location: assignedLoc,
+                            subdivision: assignedSubdiv
+                        },
                         tags: {},
                         topology: {
                             plant: plantId,
                             division: divId,
                             division_name: DIVISIONS_MAP[divId] || `Division ${divId}`,
                             line: lineId,
-                            line_name: `Line ${lineId}`
+                            line_name: `Line ${lineId}`,
+                            location: assignedLoc,
+                            subdivision: assignedSubdiv
                         }
                     };
 
-                    const dbFile = path.join(settings.workDir, 'project.fuxap.db');
+                    const dbFiles = [
+                        path.join(settings.workDir, 'project.fuxap.db'),
+                        path.join(settings.workDir, '_appdata', 'project.fuxap.db')
+                    ];
+
                     try {
                         const sqlite3 = require('sqlite3').verbose();
-                        const db = new sqlite3.Database(dbFile);
-                        db.run(
-                            "INSERT OR REPLACE INTO devices (name, value, connection, cntid, cntpwd) VALUES (?, ?, ?, ?, ?);",
-                            [devId, JSON.stringify(newDevice), type, '', ''],
-                            function (err) {
-                                db.close();
-                                if (err) return res.status(500).json({ error: err.message });
-                                logger.info(`[STORAGE-TOPOLOGY] Successfully added field device "${name}" (${type}) to Plant ${plantId} > Div ${divId} > Line ${lineId}`);
-                                return res.json({ success: true, device: newDevice });
+                        for (const dbFile of dbFiles) {
+                            if (fs.existsSync(path.dirname(dbFile))) {
+                                const db = new sqlite3.Database(dbFile);
+                                db.run(
+                                    "INSERT OR REPLACE INTO devices (name, value, connection, cntid, cntpwd) VALUES (?, ?, ?, ?, ?);",
+                                    [devId, JSON.stringify(newDevice), type, '', ''],
+                                    function (err) {
+                                        db.close();
+                                    }
+                                );
                             }
-                        );
+                        }
+                        logger.info(`[STORAGE-TOPOLOGY] Successfully added field device "${name}" (${type}) to Location: ${assignedLoc} > Sub-Division: ${assignedSubdiv}`);
+                        return res.json({ success: true, device: newDevice });
                     } catch (e) {
                         return res.status(500).json({ error: e.message });
                     }
@@ -1093,11 +1138,13 @@ function startFuxa() {
 
                 app.all('/api/storage/topology', handleStorageTopology);
                 app.get('/api/storage/device-telemetry', handleDeviceTelemetry);
+                app.post('/api/storage/device-reconnect', handleDeviceReconnect);
                 app.post('/api/storage/add-topology-device', handleAddTopologyDevice);
                 app.post('/api/storage/delete-topology-device', handleDeleteTopologyDevice);
                 if (BASE_PATH) {
                     app.all(BASE_PATH + '/api/storage/topology', handleStorageTopology);
                     app.get(BASE_PATH + '/api/storage/device-telemetry', handleDeviceTelemetry);
+                    app.post(BASE_PATH + '/api/storage/device-reconnect', handleDeviceReconnect);
                     app.post(BASE_PATH + '/api/storage/add-topology-device', handleAddTopologyDevice);
                     app.post(BASE_PATH + '/api/storage/delete-topology-device', handleDeleteTopologyDevice);
                 }

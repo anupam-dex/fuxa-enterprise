@@ -181,14 +181,80 @@ def get_storage_devices_catalog(plant_id: int, base_dir: str = None, opcua_endpo
     """
     Returns a list of distinct industrial devices configured for this plant
     that are connected to InfluxDB for historical tagging on Central Storage.
+    Strictly prioritizes devices actually configured in the Plant Storage Server database.
     """
     plant_id = int(plant_id)
     if not opcua_endpoint:
         opcua_endpoint = get_plant_opcua_endpoint(plant_id)
-    plant_catalog = PLANT_STORAGE_TAGS_CATALOG.get(plant_id, {})
     plant_key = f"Plant_{plant_id}"
     devices = []
 
+    # 1. Primary Source: inspect configured devices in Central Storage instance database
+    search_dirs = []
+    if base_dir:
+        search_dirs.append(os.path.join(base_dir, "instances"))
+    search_dirs.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "instances")))
+
+    seen_dev_names = set()
+    for s_dir in search_dirs:
+        for p_pattern in [f"storage_plant_{plant_id}_*/_appdata/project.fuxap.db", f"storage_plant_{plant_id}_*/project.fuxap.db"]:
+            matches = glob.glob(os.path.join(s_dir, p_pattern))
+            for db_file in matches:
+                if not os.path.exists(db_file):
+                    continue
+                try:
+                    conn = sqlite3.connect(db_file)
+                    cur = conn.cursor()
+                    cur.execute("SELECT name, value FROM devices;")
+                    for d_name, d_val in cur.fetchall():
+                        if d_name in ("server", "0"):
+                            continue
+                        try:
+                            dev = json.loads(d_val)
+                            dev_name = dev.get("name", d_name)
+                            if not dev_name or "storage_opcua" in dev_name.lower() or "storage_opcua" in d_name.lower():
+                                continue
+                            if dev_name.lower() in seen_dev_names:
+                                continue
+                            dev_tags = dev.get("tags", {})
+                            if not dev_tags or len(dev_tags) == 0:
+                                continue
+
+                            seen_dev_names.add(dev_name.lower())
+                            dev_prop = dev.get("property") or {}
+                            endpoint = dev_prop.get("address") or opcua_endpoint
+
+                            devices.append({
+                                "device_key": dev_name.replace(" ", "_"),
+                                "id": dev.get("id") or d_name,
+                                "name": dev_name,
+                                "division": dev.get("topology", {}).get("division_name") or "Central Storage",
+                                "type": dev.get("type", "OPCUA"),
+                                "enabled": dev.get("enabled", True),
+                                "polling": dev.get("polling", 1000),
+                                "influxdb_logging": True,
+                                "property": {
+                                    "address": endpoint,
+                                    "options": dev_prop.get("options", {
+                                        "securityMode": "None",
+                                        "securityPolicy": "None"
+                                    })
+                                },
+                                "tag_count": len(dev_tags),
+                                "tags": dev_tags
+                            })
+                        except Exception:
+                            pass
+                    conn.close()
+                except Exception:
+                    pass
+
+    # If configured devices exist in storage server, ONLY return those!
+    if devices:
+        return devices
+
+    # Fallback to catalog only if no storage instance or configured devices found
+    plant_catalog = PLANT_STORAGE_TAGS_CATALOG.get(plant_id, {})
     for div_key, machines in plant_catalog.items():
         div_title = div_key.replace("_", " ")
         for machine_key, tag_list in machines.items():
@@ -228,70 +294,6 @@ def get_storage_devices_catalog(plant_id: int, base_dir: str = None, opcua_endpo
                 "tag_count": len(dev_tags),
                 "tags": dev_tags
             })
-
-    # Also inspect dynamic devices in storage instances
-    search_dirs = []
-    if base_dir:
-        search_dirs.append(os.path.join(base_dir, "instances"))
-    search_dirs.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "instances")))
-
-    for s_dir in search_dirs:
-        pattern = os.path.join(s_dir, f"storage_plant_{plant_id}_*", "project.fuxap.db")
-        matches = glob.glob(pattern)
-        for db_file in matches:
-            if os.path.exists(db_file):
-                try:
-                    conn = sqlite3.connect(db_file)
-                    cur = conn.cursor()
-                    cur.execute("SELECT name, value FROM devices;")
-                    for d_name, d_val in cur.fetchall():
-                        if d_name == "server":
-                            continue
-                        try:
-                            dev = json.loads(d_val)
-                            dev_name = dev.get("name", d_name)
-                            if any(d["name"].lower() == dev_name.lower() for d in devices):
-                                continue
-                            dev_tags = dev.get("tags", {})
-                            formatted_tags = {}
-                            for s_tag_id, s_tag in dev_tags.items():
-                                tag_name = s_tag.get("name", s_tag_id)
-                                tag_type = s_tag.get("type", "number")
-                                tag_label = s_tag.get("label", tag_name.replace("_", " "))
-                                addr = s_tag.get("address") or f"ns=2;s={plant_key}.{dev_name}.{tag_name}"
-                                combined_id = f"tag_p{plant_id}_{tag_name}"
-                                formatted_tags[combined_id] = {
-                                    "id": combined_id,
-                                    "name": tag_name,
-                                    "label": tag_label,
-                                    "type": tag_type,
-                                    "address": addr,
-                                    "description": f"Storage Server tag from {dev_name} • InfluxDB Logged"
-                                }
-                            devices.append({
-                                "device_key": dev_name.replace(" ", "_"),
-                                "id": f"dev_p{plant_id}_{d_name.lower()}",
-                                "name": dev_name,
-                                "division": "Central Storage",
-                                "type": "OPCUA",
-                                "enabled": True,
-                                "polling": 1000,
-                                "influxdb_logging": True,
-                                "property": {
-                                    "address": opcua_endpoint,
-                                    "options": {
-                                        "securityMode": "None",
-                                        "securityPolicy": "None"
-                                    }
-                                },
-                                "tag_count": len(formatted_tags),
-                                "tags": formatted_tags
-                            })
-                        except Exception:
-                            pass
-                    conn.close()
-                except Exception:
-                    pass
 
     return devices
 
@@ -514,8 +516,16 @@ def sync_tags_to_view_database(target_dir: str, plant_id: int, base_dir: str = N
             )
             all_tags.update(dev_obj["tags"])
 
-    # Clean up obsolete monolithic device row if individual devices are present
-    cur.execute("DELETE FROM devices WHERE name = ?;", (f"dev_opcua_plant_{plant_id}",))
+    # Clean up obsolete monolithic / placeholder device rows
+    cur.execute("DELETE FROM devices WHERE name LIKE '%storage_opcua%' OR name LIKE '%dev_opcua_plant%';")
+
+    # If storage devices were resolved, purge any non-storage devices (preserving server/0)
+    if storage_devices:
+        valid_dev_ids = set(storage_devices.keys()) | {"server", "0"}
+        cur.execute("SELECT name FROM devices;")
+        for (existing_name,) in cur.fetchall():
+            if existing_name not in valid_dev_ids:
+                cur.execute("DELETE FROM devices WHERE name = ?;", (existing_name,))
 
     # Database integrity & self-healing
     try:

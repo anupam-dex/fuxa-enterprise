@@ -1,3 +1,154 @@
+
+    // Intercept projectData XHR to ensure custom Location & Sub-Division are passed in set-device command
+    (function hookProjectDataXhr() {
+        if (window.__fuxaXhrHooked) return;
+        window.__fuxaXhrHooked = true;
+        const origSend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.send = function(body) {
+            try {
+                if (typeof body === 'string' && body.includes('"cmd":"set-device"')) {
+                    const parsed = JSON.parse(body);
+                    if (parsed && parsed.data) {
+                        const locSelect = document.getElementById('fuxa-dev-loc-select');
+                        const locCustom = document.getElementById('fuxa-dev-loc-custom');
+                        const subdivInput = document.getElementById('fuxa-dev-subdiv-input');
+                        if (locSelect) {
+                            const finalLoc = locSelect.value === '__custom__'
+                                ? (locCustom ? locCustom.value.trim() : '')
+                                : locSelect.value;
+                            const finalSubdiv = subdivInput ? subdivInput.value.trim() : '';
+                            if (finalLoc) {
+                                parsed.data.location = finalLoc;
+                                if (!parsed.data.property) parsed.data.property = {};
+                                parsed.data.property.location = finalLoc;
+                            }
+                            if (finalSubdiv) {
+                                parsed.data.subdivision = finalSubdiv;
+                                if (!parsed.data.property) parsed.data.property = {};
+                                parsed.data.property.subdivision = finalSubdiv;
+                            }
+                            body = JSON.stringify(parsed);
+                        }
+                    }
+                }
+            } catch (e) {}
+            return origSend.call(this, body);
+        };
+    })();
+
+    function ensureDevicePropertyLocationInputs() {
+        const dlg = document.querySelector('app-device-property');
+        if (!dlg) return;
+
+        if (dlg.querySelector('#fuxa-dev-hierarchy-section')) return;
+
+        const nameField = dlg.querySelector('.name-field');
+        if (!nameField) return;
+
+        let dev = null;
+        let comp = null;
+        try {
+            if (window.ng && typeof window.ng.getComponent === 'function') {
+                comp = window.ng.getComponent(dlg);
+                dev = comp && comp.data ? comp.data.device : null;
+            }
+        } catch (e) {}
+
+        const curLoc = (dev && (dev.location || (dev.property && dev.property.location))) || '';
+        const curSubdiv = (dev && (dev.subdivision || (dev.property && dev.property.subdivision))) || '';
+
+        const container = document.createElement('div');
+        container.id = 'fuxa-dev-hierarchy-section';
+        container.style.cssText = 'background: rgba(15, 23, 42, 0.7); border: 1.5px solid #334155; border-radius: 6px; padding: 12px 14px; margin: 10px 0 14px 0; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif;';
+
+        const LOCATIONS = [
+            { val: 'Paintshop (Div 6)', label: '🏭 Paintshop (Div 6)' },
+            { val: 'Substation & EMS', label: '⚡ Substation & EMS' },
+            { val: 'Body Shop (Div 1)', label: '🚗 Body Shop (Div 1)' },
+            { val: 'Stamping (Div 2)', label: '🔨 Stamping (Div 2)' },
+            { val: 'Assembly (Div 3)', label: '🔩 Assembly (Div 3)' },
+            { val: 'Quality & Inspection (Div 4)', label: '🔬 Quality & Inspection (Div 4)' },
+            { val: 'Utility & Boiler (Div 5)', label: '🔧 Utility & Boiler (Div 5)' },
+            { val: 'Robotics & Automation (Div 7)', label: '🤖 Robotics & Automation (Div 7)' },
+            { val: 'Material Handling (Div 8)', label: '📦 Material Handling (Div 8)' },
+            { val: 'Main Production Floor', label: '🏭 Main Production Floor' }
+        ];
+
+        let locOptionsHtml = LOCATIONS.map(l => {
+            const isSelected = (curLoc === l.val);
+            return `<option value="${l.val}" ${isSelected ? 'selected' : ''}>${l.label}</option>`;
+        }).join('');
+
+        const isKnownLoc = LOCATIONS.some(l => l.val === curLoc);
+        const isCustom = curLoc && !isKnownLoc;
+        locOptionsHtml += `<option value="__custom__" ${isCustom ? 'selected' : ''}>✏️ Custom Sub-Location...</option>`;
+
+        container.innerHTML = `
+            <div style="font-size: 11.5px; font-weight: 700; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                <span>📍</span> Storage Hierarchy &amp; Sub-Division Configuration
+            </div>
+            <div style="display: flex; gap: 12px; margin-bottom: 8px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 200px;">
+                    <label style="display: block; font-size: 11.5px; font-weight: 600; color: #cbd5e1; margin-bottom: 4px;">
+                        Plant Sub-Location / Area <span style="color: #ef4444;">*</span>
+                    </label>
+                    <select id="fuxa-dev-loc-select" style="width: 100%; height: 34px; background: #0f172a; border: 1px solid #475569; border-radius: 4px; color: #f8fafc; font-size: 12.5px; padding: 0 8px; outline: none; cursor: pointer;">
+                        ${locOptionsHtml}
+                    </select>
+                    <input id="fuxa-dev-loc-custom" type="text" placeholder="Enter custom location name" value="${isCustom ? curLoc : ''}" style="display: ${isCustom ? 'block' : 'none'}; width: 100%; height: 30px; box-sizing: border-box; margin-top: 6px; background: #0f172a; border: 1px solid #38bdf8; border-radius: 4px; color: #f8fafc; font-size: 12px; padding: 0 8px; outline: none;" />
+                </div>
+                <div style="flex: 1; min-width: 200px;">
+                    <label style="display: block; font-size: 11.5px; font-weight: 600; color: #cbd5e1; margin-bottom: 4px;">
+                        Sub-Division / Section / Cell
+                    </label>
+                    <input id="fuxa-dev-subdiv-input" type="text" placeholder="e.g. Oven Line 1, Spray Booth 2, Feeder 1" value="${curSubdiv}" style="width: 100%; height: 34px; box-sizing: border-box; background: #0f172a; border: 1px solid #475569; border-radius: 4px; color: #f8fafc; font-size: 12.5px; padding: 0 8px; outline: none;" />
+                </div>
+            </div>
+            <div style="font-size: 10.5px; color: #94a3b8; line-height: 1.4;">
+                💡 Organizes this device into the <strong>Option 3 Multi-Root Topology Tree</strong> and displays <code>📁 Sub-Division</code> badges automatically.
+            </div>
+        `;
+
+        nameField.after(container);
+
+        const selectEl = container.querySelector('#fuxa-dev-loc-select');
+        const customInput = container.querySelector('#fuxa-dev-loc-custom');
+        const subdivInput = container.querySelector('#fuxa-dev-subdiv-input');
+
+        selectEl.addEventListener('change', () => {
+            if (selectEl.value === '__custom__') {
+                customInput.style.display = 'block';
+                customInput.focus();
+            } else {
+                customInput.style.display = 'none';
+            }
+            syncValues();
+        });
+
+        customInput.addEventListener('input', syncValues);
+        subdivInput.addEventListener('input', syncValues);
+
+        function syncValues() {
+            const finalLoc = selectEl.value === '__custom__' ? (customInput.value.trim() || 'Custom Area') : selectEl.value;
+            const finalSubdiv = subdivInput.value.trim();
+
+            if (dev) {
+                dev.location = finalLoc;
+                dev.subdivision = finalSubdiv;
+                if (!dev.property) dev.property = {};
+                dev.property.location = finalLoc;
+                dev.property.subdivision = finalSubdiv;
+            }
+        }
+
+        const okBtn = dlg.querySelector('button[color="primary"], mat-dialog-actions button:last-child');
+        if (okBtn) {
+            okBtn.addEventListener('click', () => {
+                syncValues();
+            }, true);
+        }
+    }
+
 /**
  * FUXA Enterprise - Custom URL & Project Name Manager
  * Integrated directly inside the Settings (⚙️) Setup Card with native FUXA styling
@@ -990,6 +1141,36 @@
         `;
         body.appendChild(formGroup);
 
+        // Hierarchy Form Group (Location & Sub-Division)
+        const hierGroup = document.createElement('div');
+        hierGroup.style.cssText = 'background: rgba(15, 23, 42, 0.7); border: 1px solid #334155; border-radius: 6px; padding: 12px 14px; margin-bottom: 14px;';
+        hierGroup.innerHTML = `
+            <div style="font-size: 11.5px; font-weight: 700; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+                📍 Plant Hierarchy &amp; Sub-Division Assignment
+            </div>
+            <div style="display: flex; gap: 10px; margin-bottom: 4px;">
+                <div style="flex: 1;">
+                    <label style="display: block; font-size: 11px; font-weight: 600; color: #cbd5e1; margin-bottom: 4px;">Sub-Location / Area:</label>
+                    <select id="fuxa-modal-loc-select" style="width: 100%; height: 32px; background: #0f172a; border: 1px solid #475569; border-radius: 4px; color: #f8fafc; font-size: 12px; padding: 0 6px;">
+                        <option value="Paintshop (Div 6)">🏭 Paintshop (Div 6)</option>
+                        <option value="Substation & EMS">⚡ Substation &amp; EMS</option>
+                        <option value="Body Shop (Div 1)">🚗 Body Shop (Div 1)</option>
+                        <option value="Stamping (Div 2)">🔨 Stamping (Div 2)</option>
+                        <option value="Assembly (Div 3)">🔩 Assembly (Div 3)</option>
+                        <option value="Quality & Inspection (Div 4)">🔬 Quality &amp; Inspection (Div 4)</option>
+                        <option value="Utility & Boiler (Div 5)">🔧 Utility &amp; Boiler (Div 5)</option>
+                        <option value="Robotics & Automation (Div 7)">🤖 Robotics &amp; Automation (Div 7)</option>
+                        <option value="Main Production Floor">🏭 Main Production Floor</option>
+                    </select>
+                </div>
+                <div style="flex: 1;">
+                    <label style="display: block; font-size: 11px; font-weight: 600; color: #cbd5e1; margin-bottom: 4px;">Sub-Division / Section:</label>
+                    <input id="fuxa-modal-subdiv-input" type="text" placeholder="e.g. Line 1, Oven Zone, Booth 2" style="width: 100%; height: 32px; box-sizing: border-box; background: #0f172a; border: 1px solid #475569; border-radius: 4px; color: #f8fafc; font-size: 12px; padding: 0 8px;" />
+                </div>
+            </div>
+        `;
+        body.appendChild(hierGroup);
+
         // Preview Container
         const previewContainer = document.createElement('div');
         previewContainer.id = 'fuxa-device-preview-card';
@@ -1105,13 +1286,20 @@
                 connectBtn.disabled = true;
                 connectBtn.innerHTML = `Connecting... ⏳`;
 
+                const chosenLoc = document.getElementById('fuxa-modal-loc-select') ? document.getElementById('fuxa-modal-loc-select').value : (dev.location || 'Paintshop (Div 6)');
+                const chosenSubdiv = document.getElementById('fuxa-modal-subdiv-input') ? document.getElementById('fuxa-modal-subdiv-input').value.trim() : (dev.subdivision || '');
+
                 const devPayload = {
                     id: dev.id,
                     name: dev.name,
                     type: 'OPCUA',
                     enabled: true,
+                    location: chosenLoc,
+                    subdivision: chosenSubdiv,
                     property: {
                         address: 'opc.tcp://127.0.0.1:4845/fuxa/server/',
+                        location: chosenLoc,
+                        subdivision: chosenSubdiv,
                         options: {
                             securityMode: 'None',
                             securityPolicy: 'None'
@@ -1257,7 +1445,7 @@
             const topOffset = (outerH - borderT + 10);
             const leftOffset = -borderL;
 
-            badge.style.cssText = `position: absolute; top: ${topOffset}px; left: ${leftOffset}px; width: ${outerW}px; box-sizing: border-box; background: #181f2a; border: 1.5px solid #334155; border-radius: 6px; padding: 6px 8px; font-size: 10px; line-height: 1.35; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: left; pointer-events: none; z-index: 5; box-shadow: 0 4px 12px rgba(0,0,0,0.45);`;
+            badge.style.cssText = `position: absolute; top: ${topOffset}px; left: ${leftOffset}px; width: ${outerW}px; box-sizing: border-box; background: #181f2a; border: 1.5px solid #334155; border-radius: 6px; padding: 6px 8px; font-size: 10px; line-height: 1.35; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: left; cursor: pointer; pointer-events: auto; z-index: 5; box-shadow: 0 4px 12px rgba(0,0,0,0.45); transition: border-color 0.15s ease;`;
 
             const telem = dev.telemetry;
             const isConn = !!telem.connected;
@@ -1275,10 +1463,49 @@
                     </span>
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: 4px; font-size: 9.5px; color: #94a3b8;">
-                    <span>Reconn: <strong style="color: #f1f5f9; font-weight: 700;">${reconns}</strong></span>
+                    <button class="fuxa-reconn-trigger" style="pointer-events: auto; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 4px; background: rgba(59, 130, 246, 0.2); border: 1px solid #3b82f6; color: #93c5fd; font-size: 9.5px; font-weight: 600; transition: all 0.15s ease; box-shadow: 0 1px 4px rgba(0,0,0,0.25); outline: none;" title="Click to view exact disconnection reasons & diagnostics">
+                        <span>Reconn:</span>
+                        <strong style="color: #60a5fa; font-weight: 700; text-decoration: underline;">${reconns}</strong>
+                        <span style="font-size: 10px; font-weight: 800; letter-spacing: -1px; margin-left: 2px; color: #60a5fa;">&gt;&gt;</span>
+                    </button>
                     <span style="color: ${cbColor}; font-weight: 700; background: rgba(0,0,0,0.35); padding: 1px 6px; border-radius: 3px; border: 1px solid ${cbColor}44;">${cbText}</span>
                 </div>
             `;
+
+            badge.onmouseenter = () => {
+                badge.style.borderColor = '#60a5fa';
+            };
+            badge.onmouseleave = () => {
+                badge.style.borderColor = '#334155';
+            };
+            badge.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                openDeviceDiagnosticsModal(dev);
+            };
+
+            const trigger = badge.querySelector('.fuxa-reconn-trigger');
+            if (trigger) {
+                trigger.onmouseenter = (e) => {
+                    e.stopPropagation();
+                    trigger.style.background = '#2563eb';
+                    trigger.style.color = '#ffffff';
+                    trigger.style.borderColor = '#60a5fa';
+                };
+                trigger.onmouseleave = (e) => {
+                    e.stopPropagation();
+                    trigger.style.background = 'rgba(59, 130, 246, 0.2)';
+                    trigger.style.color = '#93c5fd';
+                    trigger.style.borderColor = '#3b82f6';
+                };
+                trigger.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    openDeviceDiagnosticsModal(dev);
+                };
+            }
         });
     }
 
@@ -1294,12 +1521,260 @@
                 storageTopologyData = await res.json();
                 updateStorageTopologyDOM();
                 enhanceNativeDeviceNodesWithTelemetry(storageTopologyData.devices);
+                applyTopologicalLayoutToDeviceMap();
             }
         } catch (e) {
             console.error('[STORAGE-TOPOLOGY] Error loading topology:', e);
         } finally {
             isFetchingTopology = false;
         }
+    }
+
+    function openDeviceDiagnosticsModal(dev) {
+        if (!dev) return;
+        let existingModal = document.getElementById('fuxa-device-diagnostics-modal');
+        if (existingModal) existingModal.remove();
+
+        const telem = dev.telemetry || {};
+        const isConn = !!telem.connected;
+        const connStatus = telem.connectionStatus || (isConn ? 'ON' : 'OFF');
+        const reconns = typeof telem.reconnectCount === 'number' ? telem.reconnectCount : 0;
+        const uptime = typeof telem.uptimePercent === 'number' ? telem.uptimePercent : 100;
+        const cb = telem.circuitBreaker || { state: 'CLOSED', failures: 0, nextRetryInSeconds: 0 };
+        const lastConn = formatTelemetryTimestamp(telem.lastConnected);
+        const history = telem.disconnectionHistory || [];
+        const address = (dev.property && dev.property.address) || dev.address || 'Local Device';
+
+        let statusText = '🟢 ONLINE & STREAMING';
+        let statusBg = 'rgba(34, 197, 94, 0.15)';
+        let statusBorder = '#22c55e';
+        let statusColor = '#4ade80';
+
+        if (connStatus === 'WARNING') {
+            statusText = '🟡 WARNING: Polling Delay / Stale Response';
+            statusBg = 'rgba(234, 179, 8, 0.15)';
+            statusBorder = '#eab308';
+            statusColor = '#facc15';
+        } else if (!isConn || connStatus === 'OFF') {
+            statusText = '🔴 DISCONNECTED / RECONNECTING';
+            statusBg = 'rgba(239, 68, 68, 0.15)';
+            statusBorder = '#ef4444';
+            statusColor = '#f87171';
+        }
+
+        const modal = document.createElement('div');
+        modal.id = 'fuxa-device-diagnostics-modal';
+        modal.style.cssText = 'position: fixed; inset: 0; background: rgba(15, 23, 42, 0.82); backdrop-filter: blur(5px); z-index: 10005; display: flex; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;';
+
+        const historyRows = history.length > 0
+            ? history.map((evt) => {
+                const isResolved = evt.status === 'RECONNECTED';
+                const statusBadge = isResolved
+                    ? '<span style="background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.35); padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 700;">Resolved</span>'
+                    : '<span style="background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.35); padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 700;">Active Failure</span>';
+                
+                let codeBg = 'rgba(239,68,68,0.15)';
+                let codeColor = '#f87171';
+                if (evt.code === 'WATCHDOG_TIMEOUT') {
+                    codeBg = 'rgba(249,115,22,0.18)';
+                    codeColor = '#fb923c';
+                } else if (evt.code === 'MANUAL_RECONNECT') {
+                    codeBg = 'rgba(59,130,246,0.18)';
+                    codeColor = '#60a5fa';
+                } else if (evt.code === 'BAD_SESSION_CLOSED') {
+                    codeBg = 'rgba(234,179,8,0.18)';
+                    codeColor = '#facc15';
+                }
+
+                const durationStr = evt.durationMs
+                    ? `${(evt.durationMs / 1000).toFixed(1)}s`
+                    : (isResolved ? 'Quick' : 'Ongoing');
+
+                return `
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 11px;">
+                        <td style="padding: 10px 12px; color: #cbd5e1; white-space: nowrap;">${evt.timestampFormatted || new Date(evt.timestamp).toLocaleTimeString()}</td>
+                        <td style="padding: 10px 12px; white-space: nowrap;">
+                            <span style="background: ${codeBg}; color: ${codeColor}; border: 1px solid ${codeColor}44; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 10.5px; font-weight: 600;">${evt.code || 'COMM_ERROR'}</span>
+                        </td>
+                        <td style="padding: 10px 12px; color: #f1f5f9; line-height: 1.4;">${evt.reason || 'Connection lost'}</td>
+                        <td style="padding: 10px 12px; color: #94a3b8; white-space: nowrap;">${durationStr}</td>
+                        <td style="padding: 10px 12px; text-align: right; white-space: nowrap;">${statusBadge}</td>
+                    </tr>
+                `;
+            }).join('')
+            : `
+                <tr>
+                    <td colspan="5" style="padding: 32px 16px; text-align: center; color: #94a3b8;">
+                        <div style="font-size: 26px; margin-bottom: 8px;">✨</div>
+                        <div style="font-weight: 600; color: #4ade80; font-size: 13px;">No Disconnections Recorded</div>
+                        <div style="font-size: 11.5px; color: #64748b; margin-top: 4px;">Zero packet drops or socket timeouts detected since SCADA server start. Field communication is rock solid.</div>
+                    </td>
+                </tr>
+            `;
+
+        modal.innerHTML = `
+            <div style="background: #181f2a; border: 1.5px solid #334155; border-radius: 12px; width: 720px; max-width: 95vw; max-height: 92vh; overflow-y: auto; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.75); color: #f8fafc; padding: 24px 28px; box-sizing: border-box;">
+                <!-- Header -->
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.08);">
+                    <div>
+                        <div style="font-size: 1.15rem; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 8px;">
+                            <span>🩺</span> Device Disconnection & Health Diagnostics
+                        </div>
+                        <div style="font-size: 0.84rem; color: #cbd5e1; margin-top: 4px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <strong style="color: #f1f5f9; font-size: 13px;">${dev.name}</strong>
+                            <span style="color: #64748b;">•</span>
+                            <span style="color: #94a3b8; font-family: monospace;">${dev.type || 'Field Device'}</span>
+                            <span style="color: #64748b;">•</span>
+                            <span style="color: #38bdf8; font-family: monospace; font-size: 11px;">${address}</span>
+                        </div>
+                    </div>
+                    <button id="diag-modal-close" style="background: transparent; border: none; font-size: 24px; color: #94a3b8; cursor: pointer; padding: 0 6px; line-height: 1; border-radius: 4px;">&times;</button>
+                </div>
+
+                <!-- Live Status Banner -->
+                <div style="display: flex; align-items: center; justify-content: space-between; background: ${statusBg}; border: 1px solid ${statusBorder}; border-radius: 8px; padding: 10px 14px; margin-bottom: 18px;">
+                    <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 12.5px; color: ${statusColor};">
+                        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${statusBorder};"></span>
+                        <span>${statusText}</span>
+                    </div>
+                    <div style="font-size: 11px; color: #cbd5e1;">
+                        Last Tag Response: <strong style="color: #f8fafc;">${lastConn}</strong>
+                    </div>
+                </div>
+
+                <!-- 4 KPI Metrics Grid -->
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;">
+                    <div style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; text-align: center;">
+                        <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Reconnections</div>
+                        <div style="font-size: 20px; font-weight: 800; color: ${reconns > 0 ? '#f59e0b' : '#4ade80'};">${reconns}</div>
+                        <div style="font-size: 9.5px; color: #64748b; margin-top: 2px;">Drops since startup</div>
+                    </div>
+                    <div style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; text-align: center;">
+                        <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Telemetry Uptime</div>
+                        <div style="font-size: 20px; font-weight: 800; color: #38bdf8;">${uptime}%</div>
+                        <div style="font-size: 9.5px; color: #64748b; margin-top: 2px;">Availability rate</div>
+                    </div>
+                    <div style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; text-align: center;">
+                        <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Circuit Breaker</div>
+                        <div style="font-size: 14px; font-weight: 800; color: ${cb.state === 'OPEN' ? '#f87171' : (cb.state === 'HALF_OPEN' ? '#facc15' : '#4ade80')}; margin-top: 4px;">${cb.state || 'CLOSED'}</div>
+                        <div style="font-size: 9.5px; color: #64748b; margin-top: 4px;">${cb.failures || 0} recent failures</div>
+                    </div>
+                    <div style="background: rgba(15, 23, 42, 0.65); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px; text-align: center;">
+                        <div style="font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Polling Cadence</div>
+                        <div style="font-size: 14px; font-weight: 800; color: #cbd5e1; margin-top: 4px;">1.0 sec</div>
+                        <div style="font-size: 9.5px; color: #64748b; margin-top: 4px;">High-precision DAQ</div>
+                    </div>
+                </div>
+
+                <!-- Disconnection History Table -->
+                <div style="margin-bottom: 18px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="font-size: 0.8rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.7px; color: #94a3b8;">
+                            Recent Disconnection Reasons Log (${history.length})
+                        </span>
+                        <span style="font-size: 10px; color: #64748b;">Auto-updated on dropout & recovery</span>
+                    </div>
+                    <div style="background: rgba(15, 23, 42, 0.5); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; overflow: hidden;">
+                        <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                            <thead>
+                                <tr style="background: rgba(0,0,0,0.3); border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8;">
+                                    <th style="padding: 8px 12px;">Time</th>
+                                    <th style="padding: 8px 12px;">Code</th>
+                                    <th style="padding: 8px 12px;">Exact Root Cause Reason</th>
+                                    <th style="padding: 8px 12px;">Downtime</th>
+                                    <th style="padding: 8px 12px; text-align: right;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${historyRows}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Industrial OT Troubleshooting Note -->
+                <div style="background: rgba(30, 41, 59, 0.45); border-left: 3px solid #38bdf8; border-radius: 0 6px 6px 0; padding: 10px 14px; margin-bottom: 20px; font-size: 11px; line-height: 1.5; color: #94a3b8;">
+                    <strong style="color: #38bdf8;">💡 Why Yellow Blinking Occurred & How It Is Solved:</strong>
+                    In standard SCADA, when a field socket drops silently without emitting TCP close (zombie socket), the driver still flags 'connected' while tag updates freeze, locking the screen in yellow warning and requiring repeated full server restarts.
+                    Our automated watchdog actively monitors tag response timestamps; if telemetry stalls for >15s, it forcefully recycles the hung socket and safely reconnects via circuit breaker without restarting the SCADA server.
+                </div>
+
+                <!-- Action Footer -->
+                <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 14px;">
+                    <div style="font-size: 11px; color: #64748b;">
+                        Need to unblock this device without restarting the server?
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button id="diag-btn-reconnect" style="background: #2563eb; color: #ffffff; border: none; border-radius: 6px; padding: 8px 16px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(37,99,235,0.3); transition: all 0.15s ease;">
+                            <span>🔄</span> Force Reconnect & Clear Sockets
+                        </button>
+                        <button id="diag-btn-close" style="background: rgba(255,255,255,0.06); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 8px 16px; font-size: 12px; font-weight: 500; cursor: pointer;">
+                            Close
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        const closeModal = () => modal.remove();
+        document.getElementById('diag-modal-close').onclick = closeModal;
+        document.getElementById('diag-btn-close').onclick = closeModal;
+        modal.onclick = (e) => {
+            if (e.target === modal) closeModal();
+        };
+
+        const reconnBtn = document.getElementById('diag-btn-reconnect');
+        reconnBtn.onclick = async () => {
+            reconnBtn.disabled = true;
+            reconnBtn.style.opacity = '0.7';
+            reconnBtn.innerHTML = '<span>🔄</span> Recycling Sockets & Reconnecting...';
+
+            try {
+                const targetId = dev.id || dev.name;
+                const basePath = window.__BASE_PATH__ || getBasePath() || '';
+                const endpoints = [
+                    basePath + '/api/storage/device-reconnect',
+                    'api/storage/device-reconnect',
+                    '/api/storage/device-reconnect'
+                ];
+                let res = null;
+                for (const ep of endpoints) {
+                    try {
+                        res = await fetch(ep, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ deviceId: targetId, reason: 'Operator manual UI diagnostics reset' })
+                        });
+                        if (res && res.ok) break;
+                    } catch (e) {}
+                }
+
+                if (res && res.ok) {
+                    await fetchStorageTopology();
+                    reconnBtn.style.background = '#059669';
+                    reconnBtn.innerHTML = '<span>✅</span> Reconnect Initiated!';
+                    setTimeout(() => {
+                        const updatedDev = (storageTopologyData && storageTopologyData.devices)
+                            ? storageTopologyData.devices.find(d => d.id === dev.id)
+                            : dev;
+                        openDeviceDiagnosticsModal(updatedDev || dev);
+                    }, 1200);
+                } else {
+                    const err = res ? await res.json().catch(() => ({})) : {};
+                    alert('Failed to trigger device reconnection: ' + (err.error || 'Server error'));
+                    reconnBtn.disabled = false;
+                    reconnBtn.style.opacity = '1';
+                    reconnBtn.innerHTML = '<span>🔄</span> Force Reconnect & Clear Sockets';
+                }
+            } catch (err) {
+                alert('Error: ' + err.message);
+                reconnBtn.disabled = false;
+                reconnBtn.style.opacity = '1';
+                reconnBtn.innerHTML = '<span>🔄</span> Force Reconnect & Clear Sockets';
+            }
+        };
     }
 
     function openAddTopologyDeviceModal(preDivision = null, preLine = null) {
@@ -1973,6 +2448,496 @@
         removeTopologyDevice(id, name);
     };
 
+    // =========================================================================
+    // Option 3: Topological Connections View (Sub-Location Filter + 3-Tier Multi-Root Tree)
+    // =========================================================================
+    let currentTopoLocationFilter = 'all';
+
+    function getDeviceSubLocationInfo(devName, devObj) {
+        const name = (devName || (devObj && devObj.name) || '').trim();
+        const lower = name.toLowerCase();
+
+        // 1. Explicit user-configured Location on device
+        const explicitLoc = (devObj && (devObj.location || (devObj.property && devObj.property.location))) || '';
+        if (explicitLoc && explicitLoc.trim()) {
+            const locName = explicitLoc.trim();
+            let icon = '🏭';
+            const lLow = locName.toLowerCase();
+            if (lLow.includes('ems') || lLow.includes('energy') || lLow.includes('substation') || lLow.includes('power')) icon = '⚡';
+            else if (lLow.includes('paint') || lLow.includes('oven') || lLow.includes('booth') || lLow.includes('d6')) icon = '🏭';
+            else if (lLow.includes('body') || lLow.includes('d1')) icon = '🚗';
+            else if (lLow.includes('stamp') || lLow.includes('press') || lLow.includes('d2')) icon = '🔨';
+            else if (lLow.includes('assembly') || lLow.includes('d3')) icon = '🔩';
+            else if (lLow.includes('quality') || lLow.includes('inspection') || lLow.includes('d4')) icon = '🔬';
+            else if (lLow.includes('boiler') || lLow.includes('utility') || lLow.includes('chiller') || lLow.includes('d5')) icon = '🔧';
+            else if (lLow.includes('robot') || lLow.includes('d7')) icon = '🤖';
+            else if (lLow.includes('material') || lLow.includes('d8')) icon = '📦';
+            else icon = '📍';
+
+            return {
+                id: 'loc_' + locName.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+                name: locName,
+                icon: icon,
+                fullName: `${icon} ${locName}`
+            };
+        }
+
+        // 2. Explicit topology in devObj (from central storage or metadata)
+        if (devObj && devObj.topology && devObj.topology.division) {
+            const divId = String(devObj.topology.division);
+            const divNames = {
+                '1': 'Body Shop (Div 1)',
+                '2': 'Stamping (Div 2)',
+                '3': 'Assembly (Div 3)',
+                '4': 'Quality & Inspection (Div 4)',
+                '5': 'Utility & Boiler (Div 5)',
+                '6': 'Paintshop (Div 6)',
+                '7': 'Robotics & Automation (Div 7)',
+                '8': 'Material Handling (Div 8)'
+            };
+            const divIcons = {
+                '1': '🚗', '2': '🔨', '3': '🔩', '4': '🔬',
+                '5': '🔧', '6': '🏭', '7': '🤖', '8': '📦'
+            };
+            return {
+                id: 'div_' + divId,
+                name: divNames[divId] || `Division ${divId}`,
+                icon: divIcons[divId] || '🏭',
+                fullName: `${divIcons[divId] || '🏭'} ${divNames[divId] || `Division ${divId}`}`
+            };
+        }
+
+        // 2. Explicit location / UNS path
+        const rawLoc = (devObj && (devObj.location || devObj.unsPath)) || '';
+        if (rawLoc) {
+            const cleaned = rawLoc.replace(/^Plant_\d+[\/_]/i, '').replace(/[\/_].*/, '').trim();
+            if (cleaned) {
+                return {
+                    id: 'loc_' + cleaned.toLowerCase().replace(/\s+/g, '_'),
+                    name: cleaned,
+                    icon: '📍',
+                    fullName: `📍 ${cleaned}`
+                };
+            }
+        }
+
+        // 3. Name-based heuristics for TVS plant conventions
+        if (lower.includes('ems') || lower.includes('energy') || lower.includes('meter') || lower.includes('power') || lower.includes('substation') || lower.includes('transformer')) {
+            return { id: 'subloc_ems', name: 'Substation & EMS', icon: '⚡', fullName: '⚡ Substation & EMS' };
+        }
+        if (lower.includes('oven') || lower.includes('spray') || lower.includes('paint') || lower.includes('booth') || lower.includes('d6') || lower.includes('p9_d6')) {
+            return { id: 'div_6', name: 'Paintshop (Div 6)', icon: '🏭', fullName: '🏭 Paintshop (Div 6)' };
+        }
+        if (lower.includes('body') || lower.includes('d1')) {
+            return { id: 'div_1', name: 'Body Shop (Div 1)', icon: '🚗', fullName: '🚗 Body Shop (Div 1)' };
+        }
+        if (lower.includes('stamp') || lower.includes('press') || lower.includes('d2')) {
+            return { id: 'div_2', name: 'Stamping (Div 2)', icon: '🔨', fullName: '🔨 Stamping (Div 2)' };
+        }
+        if (lower.includes('assembly') || lower.includes('d3')) {
+            return { id: 'div_3', name: 'Assembly (Div 3)', icon: '🔩', fullName: '🔩 Assembly (Div 3)' };
+        }
+        if (lower.includes('quality') || lower.includes('inspection') || lower.includes('d4')) {
+            return { id: 'div_4', name: 'Quality & Inspection (Div 4)', icon: '🔬', fullName: '🔬 Quality & Inspection (Div 4)' };
+        }
+        if (lower.includes('boiler') || lower.includes('chiller') || lower.includes('utility') || lower.includes('pump') || lower.includes('compressor') || lower.includes('d5')) {
+            return { id: 'div_5', name: 'Utility & Boiler (Div 5)', icon: '🔧', fullName: '🔧 Utility & Boiler (Div 5)' };
+        }
+        if (lower.includes('robot') || lower.includes('d7')) {
+            return { id: 'div_7', name: 'Robotics & Automation (Div 7)', icon: '🤖', fullName: '🤖 Robotics & Automation (Div 7)' };
+        }
+        return { id: 'subloc_main', name: 'Main Production Floor', icon: '🏭', fullName: '🏭 Main Production Floor' };
+    }
+
+    function ensureTopologicalPillBar(subLocationsList, totalCount) {
+        const workPanel = document.querySelector('app-device .work-panel');
+        if (!workPanel) return null;
+
+        let bar = document.getElementById('fuxa-topo-subloc-bar');
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.id = 'fuxa-topo-subloc-bar';
+            bar.style.cssText = 'display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 18px; margin: 0 145px 12px 20px; background: #181f2a; border: 1px solid rgba(255, 255, 255, 0.08); z-index: 50; position: relative; flex-shrink: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; border-radius: 6px;';
+        }
+
+        const banner = document.getElementById('fuxa-statutory-device-banner');
+        if (banner && banner.parentElement === workPanel) {
+            if (bar.previousSibling !== banner) {
+                banner.after(bar);
+            }
+        } else {
+            if (bar.parentElement !== workPanel || workPanel.firstElementChild !== bar) {
+                workPanel.prepend(bar);
+            }
+        }
+
+        const pillsHtml = subLocationsList.map(loc => {
+            const isActive = (currentTopoLocationFilter === loc.id);
+            const activeStyle = isActive
+                ? 'background: #2563eb; color: #ffffff; border: 1px solid #60a5fa; box-shadow: 0 2px 8px rgba(37,99,235,0.4);'
+                : 'background: rgba(255,255,255,0.05); color: #94a3b8; border: 1px solid rgba(255,255,255,0.12);';
+            return `
+                <button class="fuxa-subloc-pill" data-subloc="${loc.id}" style="${activeStyle} padding: 4px 12px; border-radius: 5px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s ease; white-space: nowrap; outline: none;">
+                    ${loc.icon} ${loc.name} (${loc.count})
+                </button>
+            `;
+        }).join('');
+
+        const isAllActive = (currentTopoLocationFilter === 'all');
+        const allActiveStyle = isAllActive
+            ? 'background: #2563eb; color: #ffffff; border: 1px solid #60a5fa; box-shadow: 0 2px 8px rgba(37,99,235,0.4);'
+            : 'background: rgba(255,255,255,0.05); color: #94a3b8; border: 1px solid rgba(255,255,255,0.12);';
+
+        bar.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 8px; overflow-x: auto; scrollbar-width: none;">
+                <span style="font-size: 11px; text-transform: uppercase; font-weight: 700; color: #94a3b8; letter-spacing: 0.6px; display: flex; align-items: center; gap: 4px; margin-right: 4px; white-space: nowrap;">
+                    <span>🗺️</span> Topology:
+                </span>
+                <button class="fuxa-subloc-pill" data-subloc="all" style="${allActiveStyle} padding: 4px 12px; border-radius: 5px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s ease; white-space: nowrap; outline: none;">
+                    🏢 All Sub-Locations (${totalCount})
+                </button>
+                ${pillsHtml}
+            </div>
+            <div style="font-size: 11px; color: #94a3b8; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
+                <span style="background: rgba(56, 189, 248, 0.12); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 10px;">
+                    ${isAllActive ? '🌳 3-Tier Multi-Root Tree' : '🔍 Sub-Location Focused'}
+                </span>
+            </div>
+        `;
+
+        bar.querySelectorAll('.fuxa-subloc-pill').forEach(btn => {
+            btn.onclick = (e) => {
+                e.preventDefault();
+                currentTopoLocationFilter = btn.dataset.subloc;
+                applyTopologicalLayoutToDeviceMap();
+            };
+        });
+
+        return bar;
+    }
+
+    function applyTopologicalLayoutToDeviceMap() {
+        if (!window.location.pathname.includes('/device')) return;
+
+        const mapContainer = document.querySelector('app-device-map .map-container');
+        const deviceCards = Array.from(document.querySelectorAll('app-device-map .node-device, app-device-map .node-flow'));
+
+        // Handle table row filtering in list view mode
+        const table = document.querySelector('app-device-map mat-table, mat-table');
+        if (table && (!mapContainer || deviceCards.length === 0)) {
+            const rows = table.querySelectorAll('mat-row, .my-mat-row');
+            rows.forEach(row => {
+                const nameCell = row.querySelector('.cdk-column-name, .mat-column-name');
+                const rowName = nameCell ? nameCell.textContent.trim() : '';
+                const devObj = (storageTopologyData && storageTopologyData.devices)
+                    ? storageTopologyData.devices.find(d => d.name === rowName)
+                    : null;
+                const info = getDeviceSubLocationInfo(rowName, devObj);
+                if (currentTopoLocationFilter === 'all' || info.id === currentTopoLocationFilter) {
+                    row.style.setProperty('display', '', '');
+                } else {
+                    row.style.setProperty('display', 'none', 'important');
+                }
+            });
+            return;
+        }
+
+        if (!mapContainer || deviceCards.length === 0) return;
+
+        // 1. Group device cards by sub-location
+        const subLocationsMap = {};
+        deviceCards.forEach(card => {
+            const header = card.querySelector('.device-header');
+            const devName = header ? header.textContent.trim() : '';
+            const devObj = (storageTopologyData && storageTopologyData.devices)
+                ? storageTopologyData.devices.find(d => d.name === devName || (d.property && d.property.address === devName))
+                : null;
+            const info = getDeviceSubLocationInfo(devName, devObj);
+            card.dataset.sublocId = info.id;
+            card.dataset.sublocName = info.name;
+
+            if (!subLocationsMap[info.id]) {
+                subLocationsMap[info.id] = {
+                    id: info.id,
+                    name: info.name,
+                    icon: info.icon,
+                    fullName: info.fullName,
+                    cards: []
+                };
+            }
+            subLocationsMap[info.id].cards.push(card);
+        });
+
+        // 2. Refresh Pill Bar
+        const subLocList = Object.values(subLocationsMap).map(loc => ({
+            id: loc.id,
+            name: loc.name,
+            icon: loc.icon,
+            count: loc.cards.length
+        }));
+        ensureTopologicalPillBar(subLocList, deviceCards.length);
+
+        // 3. Hide native 2-tier lines
+        const nativeLines = mapContainer.querySelectorAll('.main-line, .connection-line, .device-line, .main-line-flow, .flow-line');
+        nativeLines.forEach(l => l.style.setProperty('display', 'none', 'important'));
+
+        // 4. Clean previous custom elements
+        mapContainer.querySelectorAll('.fuxa-topo-line').forEach(l => l.remove());
+        mapContainer.querySelectorAll('.fuxa-subloc-card').forEach(c => c.remove());
+
+        const serverCard = mapContainer.querySelector('.main-device');
+        if (!serverCard) return;
+
+        function addLine(l, t, w, h) {
+            const line = document.createElement('div');
+            line.className = 'fuxa-topo-line';
+            line.style.cssText = `position: absolute; left: ${Math.round(l)}px; top: ${Math.round(t)}px; width: ${Math.max(2, Math.round(w))}px; height: ${Math.max(2, Math.round(h))}px; background: #475569; pointer-events: none; z-index: 2; border-radius: 1px;`;
+            mapContainer.appendChild(line);
+            return line;
+        }
+
+        const mapW = Math.max(mapContainer.clientWidth || window.innerWidth, 800);
+
+        // Calculate dynamic vertical offset based on banner and pill bar heights
+        const banner = document.getElementById('fuxa-statutory-device-banner');
+        const pillBar = document.getElementById('fuxa-topo-subloc-bar');
+        let topOffset = 25;
+        if (banner && banner.offsetHeight > 0) {
+            topOffset += banner.offsetHeight + 14;
+        }
+        if (pillBar && pillBar.offsetHeight > 0) {
+            topOffset += pillBar.offsetHeight + 10;
+        }
+
+        // -------------------------------------------------------------
+        // BRANCH A: All Locations (3-Tier Multi-Root Tree)
+        // -------------------------------------------------------------
+        if (currentTopoLocationFilter === 'all') {
+            const locKeys = Object.keys(subLocationsMap);
+            const branchWidths = locKeys.map(k => Math.max(190, subLocationsMap[k].cards.length * 195));
+            const totalBranchesWidth = branchWidths.reduce((a, b) => a + b, 0) + (locKeys.length - 1) * 40;
+
+            const effectiveWidth = Math.max(mapW, totalBranchesWidth + 80);
+            const yTier0 = topOffset;
+            const yTrunk1Start = yTier0 + 70;
+            const yTrunk1Crossbar = yTrunk1Start + 45;
+            const yTier1SubCard = yTrunk1Crossbar + 35;
+            const yTrunk2Start = yTier1SubCard + 72;
+            const yTrunk2Crossbar = yTrunk2Start + 38;
+            const yTier2DeviceCard = yTrunk2Crossbar + 30;
+            const minHeightNeeded = yTier2DeviceCard + 160;
+
+            mapContainer.style.setProperty('min-width', (totalBranchesWidth + 80) + 'px', 'important');
+            mapContainer.style.setProperty('min-height', minHeightNeeded + 'px', 'important');
+
+            const startX = Math.max(30, (effectiveWidth - totalBranchesWidth) / 2);
+            const globalCenterX = startX + totalBranchesWidth / 2;
+
+            // Tier 0: Root Server Card
+            serverCard.style.setProperty('position', 'absolute', 'important');
+            serverCard.style.setProperty('left', (globalCenterX - 85) + 'px', 'important');
+            serverCard.style.setProperty('top', yTier0 + 'px', 'important');
+            serverCard.style.setProperty('display', 'block', 'important');
+            serverCard.style.setProperty('z-index', '5', 'important');
+
+            const rootHeader = serverCard.querySelector('.device-header');
+            if (rootHeader && !rootHeader.dataset.origText) {
+                rootHeader.dataset.origText = rootHeader.textContent;
+            } else if (rootHeader && rootHeader.dataset.origText) {
+                rootHeader.textContent = rootHeader.dataset.origText;
+            }
+
+            // Vertical trunk from Server down to Tier 1 crossbar
+            addLine(globalCenterX - 2, yTrunk1Start, 4, (yTrunk1Crossbar - yTrunk1Start));
+
+            // Compute sub-location centers
+            let currX = startX;
+            const subCenters = [];
+            locKeys.forEach((k, idx) => {
+                const bw = branchWidths[idx];
+                const cx = currX + bw / 2;
+                subCenters.push({ key: k, cx: cx, startX: currX, bw: bw });
+                currX += bw + 40;
+            });
+
+            // Tier 1 horizontal trunk crossbar
+            const minTrunkX = Math.min(globalCenterX, subCenters[0].cx);
+            const maxTrunkX = Math.max(globalCenterX, subCenters[subCenters.length - 1].cx);
+            addLine(minTrunkX - 2, yTrunk1Crossbar, (maxTrunkX - minTrunkX + 4), 4);
+
+            // Render each Sub-Location cluster
+            subCenters.forEach(sc => {
+                const loc = subLocationsMap[sc.key];
+                const cards = loc.cards;
+                const N = cards.length;
+
+                // Vertical drop from trunk crossbar into Sub-Location Card
+                addLine(sc.cx - 2, yTrunk1Crossbar, 4, (yTier1SubCard - yTrunk1Crossbar));
+
+                // Create Sub-Location Card
+                const subCard = document.createElement('div');
+                subCard.className = 'fuxa-subloc-card';
+                subCard.dataset.subloc = loc.id;
+                subCard.style.cssText = `position: absolute; left: ${Math.round(sc.cx - 85)}px; top: ${yTier1SubCard}px; width: 170px; height: 72px; box-sizing: border-box; background: #1e293b; border: 2px solid #38bdf8; border-radius: 5px; text-align: center; color: #f8fafc; cursor: pointer; z-index: 6; box-shadow: 0 4px 14px rgba(0,0,0,0.45); transition: all 0.2s ease; padding: 8px 10px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;`;
+                
+                subCard.innerHTML = `
+                    <div style="font-weight: 700; font-size: 12.5px; color: #38bdf8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${loc.name}">
+                        ${loc.icon} ${loc.name}
+                    </div>
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 6px; font-size: 10.5px; color: #cbd5e1;">
+                        <span style="background: rgba(0,0,0,0.3); padding: 1px 6px; border-radius: 3px; font-weight: 600;">${N} Dev</span>
+                        <span style="color: #64748b;">•</span>
+                        <span style="color: #4ade80; font-weight: 600; display: inline-flex; align-items: center; gap: 3px;">
+                            <span style="display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: #22c55e;"></span> Online
+                        </span>
+                    </div>
+                `;
+
+                subCard.onmouseenter = () => {
+                    subCard.style.borderColor = '#60a5fa';
+                    subCard.style.transform = 'translateY(-2px)';
+                    subCard.style.boxShadow = '0 6px 18px rgba(56, 189, 248, 0.35)';
+                };
+                subCard.onmouseleave = () => {
+                    subCard.style.borderColor = '#38bdf8';
+                    subCard.style.transform = 'none';
+                    subCard.style.boxShadow = '0 4px 14px rgba(0,0,0,0.45)';
+                };
+                subCard.onclick = (e) => {
+                    e.preventDefault();
+                    currentTopoLocationFilter = loc.id;
+                    applyTopologicalLayoutToDeviceMap();
+                };
+                mapContainer.appendChild(subCard);
+
+                // Tier 2: Stem down from Sub-Location Card
+                addLine(sc.cx - 2, yTrunk2Start, 4, (yTrunk2Crossbar - yTrunk2Start));
+
+                // Child devices positions
+                const childCenters = [];
+                cards.forEach((c, cIdx) => {
+                    const cx = sc.startX + (cIdx + 0.5) * (sc.bw / N);
+                    childCenters.push(cx);
+                });
+
+                // Tier 2 horizontal sub-crossbar spanning child devices
+                const minChildX = Math.min(sc.cx, childCenters[0]);
+                const maxChildX = Math.max(sc.cx, childCenters[childCenters.length - 1]);
+                addLine(minChildX - 2, yTrunk2Crossbar, (maxChildX - minChildX + 4), 4);
+
+                // Position each child device card
+                cards.forEach((card, cIdx) => {
+                    const childX = childCenters[cIdx];
+                    addLine(childX - 2, yTrunk2Crossbar, 4, (yTier2DeviceCard - yTrunk2Crossbar));
+
+                    card.style.setProperty('position', 'absolute', 'important');
+                    card.style.setProperty('left', (childX - 85) + 'px', 'important');
+                    card.style.setProperty('top', yTier2DeviceCard + 'px', 'important');
+                    card.style.setProperty('display', 'block', 'important');
+                    card.style.setProperty('z-index', '5', 'important');
+
+                    // Render Sub-Division badge on device card
+                    const cardHeader = card.querySelector('.device-header');
+                    const cDevName = cardHeader ? cardHeader.textContent.trim() : '';
+                    const cDevObj = (storageTopologyData && storageTopologyData.devices)
+                        ? storageTopologyData.devices.find(d => d.name === cDevName || d.id === cDevName || (d.property && d.property.address === cDevName))
+                        : null;
+                    const cSubdiv = (cDevObj && (cDevObj.subdivision || (cDevObj.property && cDevObj.property.subdivision))) || card.dataset.subdivision || '';
+                    let sBadge = card.querySelector('.fuxa-card-subdiv-badge');
+                    if (cSubdiv) {
+                        if (!sBadge) {
+                            sBadge = document.createElement('div');
+                            sBadge.className = 'fuxa-card-subdiv-badge';
+                            sBadge.style.cssText = 'position: absolute; top: -11px; left: 50%; transform: translateX(-50%); background: #1e3a8a; color: #93c5fd; border: 1px solid #3b82f6; border-radius: 10px; padding: 1px 8px; font-size: 9.5px; font-weight: 700; white-space: nowrap; z-index: 12; box-shadow: 0 2px 6px rgba(0,0,0,0.5); pointer-events: none;';
+                            card.appendChild(sBadge);
+                        }
+                        sBadge.textContent = '📁 ' + cSubdiv;
+                    } else if (sBadge) {
+                        sBadge.remove();
+                    }
+                });
+            });
+
+        // -------------------------------------------------------------
+        // BRANCH B: Specific Sub-Location Focus (Focus Mode)
+        // -------------------------------------------------------------
+        } else {
+            const activeLoc = subLocationsMap[currentTopoLocationFilter];
+            if (!activeLoc) {
+                currentTopoLocationFilter = 'all';
+                applyTopologicalLayoutToDeviceMap();
+                return;
+            }
+
+            const cards = activeLoc.cards;
+            const N = cards.length;
+            const focusWidth = Math.max(190, N * 195);
+            const centerX = mapW / 2;
+            const startX = centerX - focusWidth / 2;
+
+            const yTier0 = topOffset;
+            const yTrunk1Start = yTier0 + 70;
+            const yCrossbar = yTrunk1Start + 45;
+            const yDeviceCard = yCrossbar + 55;
+            mapContainer.style.setProperty('min-height', (yDeviceCard + 160) + 'px', 'important');
+
+            // Root Card transforms into the focused Sub-Location
+            serverCard.style.setProperty('position', 'absolute', 'important');
+            serverCard.style.setProperty('left', (centerX - 85) + 'px', 'important');
+            serverCard.style.setProperty('top', yTier0 + 'px', 'important');
+            serverCard.style.setProperty('display', 'block', 'important');
+            serverCard.style.setProperty('z-index', '5', 'important');
+
+            const rootHeader = serverCard.querySelector('.device-header');
+            if (rootHeader) {
+                if (!rootHeader.dataset.origText) rootHeader.dataset.origText = rootHeader.textContent;
+                rootHeader.textContent = `${activeLoc.icon} ${activeLoc.name}`;
+            }
+
+            // Hide cards of other sub-locations
+            deviceCards.forEach(c => {
+                if (c.dataset.sublocId !== activeLoc.id) {
+                    c.style.setProperty('display', 'none', 'important');
+                }
+            });
+
+            // Vertical trunk from root down
+            addLine(centerX - 2, yTrunk1Start, 4, (yCrossbar - yTrunk1Start));
+
+            const childCenters = [];
+            cards.forEach((c, idx) => {
+                const cx = startX + (idx + 0.5) * (focusWidth / N);
+                childCenters.push(cx);
+            });
+
+            const minChildX = Math.min(centerX, childCenters[0]);
+            const maxChildX = Math.max(centerX, childCenters[childCenters.length - 1]);
+            addLine(minChildX - 2, yCrossbar, (maxChildX - minChildX + 4), 4);
+
+            cards.forEach((card, idx) => {
+                const cx = childCenters[idx];
+                addLine(cx - 2, yCrossbar, 4, (yDeviceCard - yCrossbar));
+
+                card.style.setProperty('position', 'absolute', 'important');
+                card.style.setProperty('left', (cx - 85) + 'px', 'important');
+                card.style.setProperty('top', yDeviceCard + 'px', 'important');
+                card.style.setProperty('display', 'block', 'important');
+                card.style.setProperty('z-index', '5', 'important');
+            });
+        }
+
+        // Re-align telemetry badges with their cards
+        if (storageTopologyData && storageTopologyData.devices) {
+            enhanceNativeDeviceNodesWithTelemetry(storageTopologyData.devices);
+        }
+    }
+
+    window.addEventListener('resize', () => {
+        if (window.location.pathname.includes('/device')) {
+            applyTopologicalLayoutToDeviceMap();
+        }
+    });
+
     function renderStorageServerTopologicalView() {
         // 1. Immediately remove any legacy foreign overlays
         const oldHub = document.getElementById('fuxa-storage-topological-hub');
@@ -1983,7 +2948,7 @@
         if (oldNativeBanner) oldNativeBanner.remove();
 
         if (!window.location.pathname.includes('/device')) return;
-        const workPanel = document.querySelector('app-device .work-panel, app-device');
+        const workPanel = document.querySelector('app-device .work-panel');
         if (!workPanel) return;
 
         // 2. Ensure native FUXA header has its proper icon and clean title intact
@@ -2010,6 +2975,7 @@
 
         // 3. Fetch telemetry to enhance the native FUXA device cards
         fetchStorageTopology();
+        applyTopologicalLayoutToDeviceMap();
     }
 
     function enforceViewServerRestrictions() {
@@ -2020,35 +2986,70 @@
         if (isMutating) return;
         isMutating = true;
         try {
-            // 1. Remove "Plugins" button card from Setup / Settings dialog
-            const cards = document.querySelectorAll('app-setup .btn-card, .dlg-container .btn-card');
-            for (let i = 0; i < cards.length; i++) {
-                const card = cards[i];
-                if (card.dataset.restrictedChecked) continue;
-                card.dataset.restrictedChecked = 'true';
-                const btn = card.querySelector('button');
-                if (!btn) continue;
-                const text = (btn.textContent || '').toLowerCase();
-                const icon = card.querySelector('mat-icon');
-                const iconText = icon ? icon.textContent.trim().toLowerCase() : '';
-                if (text.includes('plugin') || iconText === 'extension') {
-                    card.style.setProperty('display', 'none', 'important');
-                } else if (text.includes('connection') || iconText === 'lan') {
-                    if (!btn.dataset.statutoryHooked) {
-                        btn.dataset.statutoryHooked = 'true';
-                        btn.addEventListener('click', (e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            const closeBtn = document.querySelector('app-setup .dialog-close-btn, .dlg-container .dialog-close-btn');
-                            if (closeBtn) closeBtn.click();
-                            showStatutoryWarningModal();
-                        }, true);
+            // 1. Customize Setup / Settings dialog on View Servers
+            const setupDlg = document.querySelector('app-setup, .dlg-container');
+            if (setupDlg) {
+                const separators = setupDlg.querySelectorAll('.separator');
+                const cardRows = setupDlg.querySelectorAll('.btn-cards');
+
+                let nodeRedCard = null;
+                let logsCard = null;
+
+                const cards = setupDlg.querySelectorAll('.btn-card');
+                for (let i = 0; i < cards.length; i++) {
+                    const card = cards[i];
+                    const btn = card.querySelector('button');
+                    if (!btn) continue;
+                    const text = (btn.textContent || '').toLowerCase();
+                    const icon = card.querySelector('mat-icon');
+                    const iconText = icon ? icon.textContent.trim().toLowerCase() : '';
+                    const svgIcon = icon ? (icon.getAttribute('svgicon') || '').toLowerCase() : '';
+
+                    if (text.includes('plugin') || iconText === 'extension') {
+                        card.style.setProperty('display', 'none', 'important');
+                    } else if (text.includes('node-red') || text.includes('flow') || svgIcon.includes('nodered')) {
+                        nodeRedCard = card;
+                        card.style.setProperty('display', 'none', 'important');
+                    } else if (text.includes('log') || iconText === 'assignment') {
+                        logsCard = card;
+                    } else if (text.includes('connection') || iconText === 'lan') {
+                        if (!btn.dataset.statutoryHooked) {
+                            btn.dataset.statutoryHooked = 'true';
+                            btn.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                const closeBtn = setupDlg.querySelector('.dialog-close-btn');
+                                if (closeBtn) closeBtn.click();
+                                showStatutoryWarningModal();
+                            }, true);
+                        }
                     }
+                }
+
+                // Move Logs to the row just above it (Logic row: cardRows[2]) in place of Node-RED Flows
+                if (cardRows.length >= 3 && logsCard) {
+                    const logicRow = cardRows[2];
+                    if (logsCard.parentElement !== logicRow) {
+                        if (nodeRedCard && nodeRedCard.parentElement === logicRow) {
+                            logicRow.insertBefore(logsCard, nodeRedCard);
+                        } else {
+                            logicRow.appendChild(logsCard);
+                        }
+                    }
+                }
+
+                // Hide empty System separator (separators[3]) and System container (cardRows[3])
+                if (separators.length >= 4) {
+                    separators[3].style.setProperty('display', 'none', 'important');
+                }
+                if (cardRows.length >= 4) {
+                    cardRows[3].style.setProperty('display', 'none', 'important');
                 }
             }
 
             // 2. In /device view (Connections page)
             if (window.location.pathname.includes('/device')) {
+                applyTopologicalLayoutToDeviceMap();
                 // Hook floating plus button and ensure it opens the Central Storage device modal
                 const addBtns = document.querySelectorAll('.fab-add, button.fab-add, mat-fab.fab-add');
                 for (let i = 0; i < addBtns.length; i++) {
@@ -2105,12 +3106,13 @@
                     }
                 }
 
-                const workPanel = document.querySelector('app-device .work-panel, app-device');
+                const workPanel = document.querySelector('app-device .work-panel');
                 let banner = document.getElementById('fuxa-statutory-device-banner');
+                const bannerStyle = 'background: #1e293b; border: 1.5px solid #eab308; border-left: 6px solid #eab308; border-radius: 6px; padding: 12px 18px; margin: 44px 145px 10px 20px; display: flex; align-items: flex-start; gap: 14px; color: #f1f5f9; font-size: 13.5px; font-family: system-ui, -apple-system, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,0.3); z-index: 10; position: relative;';
                 if (workPanel && !banner) {
                     banner = document.createElement('div');
                     banner.id = 'fuxa-statutory-device-banner';
-                    banner.style.cssText = 'background: #1e293b; border: 1.5px solid #eab308; border-left: 6px solid #eab308; border-radius: 6px; padding: 14px 20px; margin: 12px 20px 14px 20px; display: flex; align-items: flex-start; gap: 14px; color: #f1f5f9; font-size: 13.5px; font-family: system-ui, -apple-system, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,0.3); z-index: 100;';
+                    banner.style.cssText = bannerStyle;
                     const host = window.location.hostname || 'localhost';
                     banner.innerHTML = `
                         <span style="font-size: 24px; line-height: 1; margin-top: 2px;">⚠️</span>
@@ -2133,7 +3135,10 @@
                     `;
                     workPanel.prepend(banner);
                 } else if (banner) {
-                    banner.style.cssText = 'background: #1e293b; border: 1.5px solid #eab308; border-left: 6px solid #eab308; border-radius: 6px; padding: 14px 20px; margin: 12px 20px 14px 20px; display: flex; align-items: flex-start; gap: 14px; color: #f1f5f9; font-size: 13.5px; font-family: system-ui, -apple-system, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,0.3); z-index: 100;';
+                    banner.style.cssText = bannerStyle;
+                    if (workPanel && banner.parentElement !== workPanel) {
+                        workPanel.prepend(banner);
+                    }
                 }
 
                 const btnAddStorage = document.getElementById('fuxa-btn-add-storage-device');
@@ -2166,10 +3171,14 @@
                 }
             });
 
-            // 4. If URL ends with /plugins on View Servers, redirect to /editor
-            if (!isStorageServer() && window.location.pathname.includes('/plugins')) {
-                window.location.href = getBasePath() + '/editor';
-                setTimeout(showStatutoryWarningModal, 400);
+            // 4. If URL ends with /plugins or /flows on View Servers, redirect to /editor
+            if (!isStorageServer()) {
+                if (window.location.pathname.includes('/plugins')) {
+                    window.location.href = getBasePath() + '/editor';
+                    setTimeout(showStatutoryWarningModal, 400);
+                } else if (window.location.pathname.includes('/flows')) {
+                    window.location.href = getBasePath() + '/editor';
+                }
             }
         } finally {
             isMutating = false;
@@ -2859,6 +3868,30 @@
             document.body.classList.toggle('fuxa-view-server', !isStorageServer());
         }
         document.title = formatBrowserTitle(liveProjectName);
+
+        // Editor loading watchdog: If on /editor and progress overlay hangs for >1.5s, dismiss overlay and unfreeze editor
+        if (window.location.pathname.includes('/editor')) {
+            const editorLoader = document.querySelector('app-editor > div[style*="position:absolute"][style*="z-index: 99999"], app-editor mat-progress-bar');
+            if (editorLoader) {
+                const parentOverlay = editorLoader.closest('div[style*="position:absolute"][style*="z-index: 99999"]') || editorLoader.parentElement;
+                if (!window.__fuxaEditorLoadStart) {
+                    window.__fuxaEditorLoadStart = Date.now();
+                } else if (Date.now() - window.__fuxaEditorLoadStart > 1500) {
+                    if (parentOverlay) {
+                        parentOverlay.style.setProperty('display', 'none', 'important');
+                    }
+                    const mainEditor = document.getElementById('svg_editor_container');
+                    if (mainEditor) {
+                        mainEditor.style.setProperty('visibility', 'visible', 'important');
+                        mainEditor.style.setProperty('opacity', '1', 'important');
+                    }
+                }
+            } else {
+                window.__fuxaEditorLoadStart = null;
+            }
+        } else {
+            window.__fuxaEditorLoadStart = null;
+        }
         removeHeaderPageUrlButton();
         const staleBadge = document.getElementById('fuxa-header-project-badge');
         if (staleBadge) staleBadge.remove();
@@ -3209,7 +4242,32 @@
         enforceViewPropertyLayout();
         ensureEditorToolIcons();
         ensureBatchDaqControlOnTagList();
+        ensureDevicePropertyLocationInputs();
         document.title = formatBrowserTitle(liveProjectName);
+
+        // Editor loading watchdog: If on /editor and progress overlay hangs for >1.5s, dismiss overlay and unfreeze editor
+        if (window.location.pathname.includes('/editor')) {
+            const editorLoader = document.querySelector('app-editor > div[style*="position:absolute"][style*="z-index: 99999"], app-editor mat-progress-bar');
+            if (editorLoader) {
+                const parentOverlay = editorLoader.closest('div[style*="position:absolute"][style*="z-index: 99999"]') || editorLoader.parentElement;
+                if (!window.__fuxaEditorLoadStart) {
+                    window.__fuxaEditorLoadStart = Date.now();
+                } else if (Date.now() - window.__fuxaEditorLoadStart > 1500) {
+                    if (parentOverlay) {
+                        parentOverlay.style.setProperty('display', 'none', 'important');
+                    }
+                    const mainEditor = document.getElementById('svg_editor_container');
+                    if (mainEditor) {
+                        mainEditor.style.setProperty('visibility', 'visible', 'important');
+                        mainEditor.style.setProperty('opacity', '1', 'important');
+                    }
+                }
+            } else {
+                window.__fuxaEditorLoadStart = null;
+            }
+        } else {
+            window.__fuxaEditorLoadStart = null;
+        }
 
         // Prevent FUXA core socket reconnect from auto-reloading while modal dialogs are open
         if (document.querySelector('.cdk-overlay-pane, mat-dialog-container, app-view-property, app-app-settings')) {

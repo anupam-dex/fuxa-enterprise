@@ -224,6 +224,25 @@ function getDevicesTelemetry() {
 }
 
 /**
+ * Force immediate reconnection of a device to clear stuck/zombie sockets without restarting FUXA
+ */
+function forceReconnectDevice(deviceId, reason) {
+    if (activeDevices[deviceId] && typeof activeDevices[deviceId].forceReconnect === 'function') {
+        return activeDevices[deviceId].forceReconnect(reason);
+    }
+    for (var id in activeDevices) {
+        var dev = activeDevices[id];
+        if (!dev) continue;
+        var devName = typeof dev.getName === 'function' ? dev.getName() : dev.name;
+        var devId = typeof dev.getId === 'function' ? dev.getId() : (dev.property ? dev.property.id : id);
+        if ((id === deviceId || devName === deviceId || devId === deviceId) && typeof dev.forceReconnect === 'function') {
+            return dev.forceReconnect(reason);
+        }
+    }
+    return Promise.reject(new Error(`Device '${deviceId}' not found among active devices`));
+}
+
+/**
  * Return all devices values
  */
 function getDevicesValues() {
@@ -593,6 +612,7 @@ var devices = module.exports = {
     removeDevice: removeDevice,
     getDevicesStatus: getDevicesStatus,
     getDevicesTelemetry: getDevicesTelemetry,
+    forceReconnectDevice: forceReconnectDevice,
     getDevicesValues: getDevicesValues,
     getDeviceValue: getDeviceValue,
     getTagValue: getTagValue,

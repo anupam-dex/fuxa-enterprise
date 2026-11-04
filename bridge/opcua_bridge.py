@@ -161,7 +161,9 @@ class DedicatedPlantHub:
     def fetch_plant_storage_devices(self) -> dict:
         """Reads devices registered in this plant's storage SQLite database"""
         storage_work_dir = os.path.join(INSTANCES_DIR, f"storage_plant_{self.plant_id}_{self.storage_port}")
-        db_path = os.path.join(storage_work_dir, "project.fuxap.db")
+        db_path = os.path.join(storage_work_dir, "_appdata", "project.fuxap.db")
+        if not os.path.exists(db_path):
+            db_path = os.path.join(storage_work_dir, "project.fuxap.db")
         devices = {}
         if os.path.exists(db_path):
             try:
