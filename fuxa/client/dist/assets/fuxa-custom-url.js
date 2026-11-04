@@ -2752,15 +2752,18 @@
     let isSavingBatchDaq = false;
 
     function ensureBatchDaqControlOnTagList() {
-        const filterEl = document.querySelector('app-device-list .filter');
-        if (!filterEl || filterEl.offsetParent === null) {
+        const devList = document.querySelector('app-device-list');
+        if (!devList) return;
+        if (devList.classList.contains('hidden') || devList.style.display === 'none') {
             lastDaqCheckedDevice = '';
             return;
         }
 
-        const selectText = filterEl.querySelector('mat-select .mat-select-value-text, mat-select .mat-select-value');
-        const currentDevName = selectText ? selectText.textContent.trim() : '';
-        if (!currentDevName) return;
+        const filterEl = devList.querySelector('.filter');
+        if (!filterEl) return;
+
+        const selectEl = filterEl.querySelector('mat-select');
+        const currentDevName = selectEl ? (selectEl.textContent || '').trim().split('\n')[0].trim() : '';
 
         let toolbar = filterEl.querySelector('#fuxa-batch-daq-toolbar');
         if (!toolbar) {

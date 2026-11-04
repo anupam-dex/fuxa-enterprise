@@ -498,7 +498,19 @@ const SHELL_ROUTES = [
 app.use(allowCrossDomain);
 
 if (indexHtmlCache) {
-    const serveShell = (req, res) => res.type('html').send(indexHtmlCache);
+    const getFreshIndexHtml = () => {
+        try {
+            const indexHtmlPath = path.join(settings.httpStatic, 'index.html');
+            const desiredBase = (BASE_PATH || '') + '/';
+            const withBase = fs.readFileSync(indexHtmlPath, 'utf8')
+                .replace(/<base href="[^"]*"\s*\/?>/, `<base href="${desiredBase}" />`);
+            const bootstrap = `<script>window.__BASE_PATH__=${JSON.stringify(BASE_PATH)};</script>`;
+            return withBase.replace('</head>', `${bootstrap}</head>`);
+        } catch (e) {
+            return indexHtmlCache;
+        }
+    };
+    const serveShell = (req, res) => res.type('html').send(getFreshIndexHtml());
     for (const shellPath of SHELL_ROUTES) {
         if (BASE_PATH) {
             app.get(BASE_PATH + shellPath, serveShell);
