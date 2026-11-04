@@ -17,6 +17,12 @@ import uuid
 
 DEFAULT_OPCUA_ENDPOINT = "opc.tcp://127.0.0.1:4845/fuxa/server/"
 
+def get_plant_opcua_endpoint(plant_id: int) -> str:
+    """Returns the dedicated isolated OPC-UA hub endpoint for a specific plant"""
+    p_id = int(plant_id)
+    port = 4840 + p_id if p_id in (1, 2, 3, 4, 9) else 4845
+    return f"opc.tcp://127.0.0.1:{port}/fuxa/server/"
+
 # Official TVS Motor Company SVG Vector paths (TVS Blue typography & TVS Red horse)
 TVS_SVG_PATHS = (
     '<path d="M5.7302 21.8458H2.84895L1.72575 25.9985H15.6925L16.7669 21.8458H13.3973L16.7669 8.02006H19.0621L18.8668 10.3162H23.7014L25.6548 3.03691H2.40944L0.504883 10.3162H5.53487L6.5604 7.9712H9.05097L5.7302 21.8458ZM42.1609 3.03691H52.9534L38.5472 25.9985H29.5127L28.243 7.18953H26.3873L27.4617 3.03691H39.4262L38.3518 7.18953H36.3008L36.2519 18.9634L43.1376 7.18953H40.8424L42.1609 3.03691ZM69.8503 9.82767C69.8503 7.53151 70.5828 5.47963 71.5107 3.3789C67.4574 2.64608 63.0622 2.35295 59.0578 3.3789C56.8114 3.96515 54.4673 5.38192 53.1976 7.38495C51.7326 9.63225 52.0744 12.5147 53.8813 14.42C54.8092 15.3482 55.9324 15.9833 57.1044 16.5207C58.0323 16.9604 59.6438 17.6444 59.888 18.7192C60.5717 21.455 56.1765 21.6993 54.4673 21.1619V19.0123H49.8768L48.1188 25.4122C52.2209 26.4381 56.5184 26.7801 60.6693 25.8519C63.1599 25.2656 65.4063 23.9954 67.0667 21.9924C68.4341 20.2825 69.2154 17.107 67.7504 15.2505C66.9202 14.2246 65.9923 13.4429 64.8691 12.8078C63.7948 12.1727 62.6227 11.7818 61.646 11.049C60.474 10.1696 60.474 8.80173 61.7437 8.02006C62.7204 7.38495 64.3319 7.67808 65.4063 7.87349L65.6016 9.77881H69.8503V9.82767Z" fill="#183883"/>'
@@ -171,12 +177,14 @@ def get_storage_tags_for_plant(plant_id: int, division_name: str = None, base_di
 
     return tags_map
 
-def get_storage_devices_catalog(plant_id: int, base_dir: str = None, opcua_endpoint: str = DEFAULT_OPCUA_ENDPOINT) -> list:
+def get_storage_devices_catalog(plant_id: int, base_dir: str = None, opcua_endpoint: str = None) -> list:
     """
     Returns a list of distinct industrial devices configured for this plant
     that are connected to InfluxDB for historical tagging on Central Storage.
     """
     plant_id = int(plant_id)
+    if not opcua_endpoint:
+        opcua_endpoint = get_plant_opcua_endpoint(plant_id)
     plant_catalog = PLANT_STORAGE_TAGS_CATALOG.get(plant_id, {})
     plant_key = f"Plant_{plant_id}"
     devices = []
@@ -208,6 +216,7 @@ def get_storage_devices_catalog(plant_id: int, base_dir: str = None, opcua_endpo
                 "division": div_title,
                 "type": "OPCUA",
                 "enabled": True,
+                "polling": 1000,
                 "influxdb_logging": True,
                 "property": {
                     "address": opcua_endpoint,
@@ -266,6 +275,7 @@ def get_storage_devices_catalog(plant_id: int, base_dir: str = None, opcua_endpo
                                 "division": "Central Storage",
                                 "type": "OPCUA",
                                 "enabled": True,
+                                "polling": 1000,
                                 "influxdb_logging": True,
                                 "property": {
                                     "address": opcua_endpoint,
@@ -442,6 +452,17 @@ def generate_fuxa_database(
 
     conn.commit()
     conn.close()
+
+    # Mirror database into _appdata/ where FUXA server reads it
+    try:
+        appdata_dir = os.path.join(target_dir, "_appdata")
+        os.makedirs(appdata_dir, exist_ok=True)
+        dest = os.path.join(appdata_dir, "project.fuxap.db")
+        import shutil
+        shutil.copyfile(db_path, dest)
+    except Exception as e:
+        pass
+
     return db_path
 
 def sync_tags_to_view_database(target_dir: str, plant_id: int, base_dir: str = None) -> dict:
@@ -459,6 +480,8 @@ def sync_tags_to_view_database(target_dir: str, plant_id: int, base_dir: str = N
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
 
+    plant_endpoint = get_plant_opcua_endpoint(plant_id)
+
     # Pre-populate / sync individual storage devices connected to InfluxDB
     for dev_id, dev_obj in storage_devices.items():
         cur.execute("SELECT value, connection, cntid, cntpwd FROM devices WHERE name = ?;", (dev_id,))
@@ -471,11 +494,20 @@ def sync_tags_to_view_database(target_dir: str, plant_id: int, base_dir: str = N
             dev_data["tags"] = existing_tags
             if "property" not in dev_data or not dev_data["property"]:
                 dev_data["property"] = {}
-            dev_data["property"]["address"] = DEFAULT_OPCUA_ENDPOINT
+            dev_data["property"]["address"] = plant_endpoint
             dev_data["enabled"] = True
+            dev_data["polling"] = 1000
+            # Strip Sim_ prefix if present
+            if dev_data.get("name", "").startswith("Sim_"):
+                dev_data["name"] = dev_data["name"].replace("Sim_", "", 1)
             cur.execute("UPDATE devices SET value = ? WHERE name = ?;", (json.dumps(dev_data), dev_id))
             all_tags.update(existing_tags)
         else:
+            dev_obj["polling"] = 1000
+            if dev_obj.get("name", "").startswith("Sim_"):
+                dev_obj["name"] = dev_obj["name"].replace("Sim_", "", 1)
+            if "property" in dev_obj:
+                dev_obj["property"]["address"] = plant_endpoint
             cur.execute(
                 "INSERT OR REPLACE INTO devices (name, value, connection, cntid, cntpwd) VALUES (?, ?, ?, ?, ?);",
                 (dev_id, json.dumps(dev_obj), "opc-ua", "", "")
@@ -566,6 +598,17 @@ def sync_tags_to_view_database(target_dir: str, plant_id: int, base_dir: str = N
 
     conn.commit()
     conn.close()
+
+    # Mirror database into _appdata/ where FUXA server reads it
+    try:
+        appdata_dir = os.path.join(target_dir, "_appdata")
+        os.makedirs(appdata_dir, exist_ok=True)
+        dest = os.path.join(appdata_dir, "project.fuxap.db")
+        import shutil
+        shutil.copyfile(db_path, dest)
+    except Exception as e:
+        pass
+
     return all_tags
 
 def update_project_name_in_db(db_path: str, new_name: str) -> bool:

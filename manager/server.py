@@ -29,6 +29,7 @@ from project_builder import (
     get_storage_tags_for_plant,
     get_storage_devices_catalog,
     get_storage_devices_for_plant,
+    get_plant_opcua_endpoint,
     update_project_name_in_db
 )
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -149,7 +150,7 @@ def ensure_default_storage_servers():
                     plant_id=int(plant_id),
                     division_name=f"Central Storage Master (Plant {plant_id})",
                     line_name="PLC Collector & InfluxDB Storage",
-                    opcua_endpoint="opc.tcp://127.0.0.1:4845/fuxa/server/",
+                    opcua_endpoint=get_plant_opcua_endpoint(int(plant_id)),
                     base_dir=BASE_DIR
                 )
             _launch_fuxa_instance(f"storage_p{plant_id}", storage_port, storage_work_dir, f"/p{plant_id}/storage")
@@ -368,7 +369,7 @@ def create_project(req: CreateProjectRequest):
         division_name=div_name,
         line_name=line_name,
         project_name=req.project_name,
-        opcua_endpoint="opc.tcp://127.0.0.1:4845/fuxa/server/",
+        opcua_endpoint=get_plant_opcua_endpoint(req.plant),
         base_dir=BASE_DIR
     )
 
@@ -881,7 +882,7 @@ def add_sim_to_storage(server_id: str):
     cur = conn.cursor()
 
     dev_id = f"dev_opc_{server_id}"
-    dev_name = f"Sim_{cfg['name'].replace(' ', '_')}"
+    dev_name = cfg['name'].replace(' ', '_')
     
     # Pre-generate tags dictionary
     tags_dict = {}
@@ -900,6 +901,7 @@ def add_sim_to_storage(server_id: str):
         "name": dev_name,
         "type": "OPCUA",
         "enabled": True,
+        "polling": 1000,
         "property": {
             "address": cfg["client_endpoint"],
             "options": {"securityMode": "None", "securityPolicy": "None"}

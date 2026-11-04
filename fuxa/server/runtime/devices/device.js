@@ -29,7 +29,7 @@ const utils = require('../utils');
 var deviceCloseTimeout = 1000;
 var DEVICE_CHECK_STATUS_INTERVAL = 5000;
 var SERVER_POLLING_INTERVAL = 1000;             // with DAQ enabled, will be saved only changed values in this interval
-var DEVICE_POLLING_INTERVAL = 3000;             // with DAQ enabled, will be saved only changed values in this interval
+var DEVICE_POLLING_INTERVAL = 1000;             // 1-second high-precision industrial polling default (1000ms)
 var DISABLE_POLLING_INTERVAL = -1;              // disable polling
 
 var fncGetDeviceProperty;

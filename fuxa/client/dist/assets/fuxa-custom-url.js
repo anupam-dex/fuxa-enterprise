@@ -108,30 +108,45 @@
                     font-variant-numeric: tabular-nums !important;
                 }
 
-                /* Header theme integration: remove white box behind Save/Settings */
+                /* Header theme integration: 100% eradicate white backgrounds */
                 :root {
-                    --headerBackground: transparent !important;
+                    --headerBackground: #18181b !important;
+                    --headerColor: #f8fafc !important;
+                    --headerBorder: #27272a !important;
+                    --workPanelBackground: #1e1e24 !important;
+                    --mainBackground: #1e1e24 !important;
+                    --editorBackground: #1e1e24 !important;
                 }
-                .header-panel,
+                app-header,
+                .header,
                 app-header .header-panel,
-                div.header-panel {
-                    background-color: transparent !important;
-                    background: transparent !important;
+                app-header .header-right,
+                app-device .header-panel,
+                .header-panel {
+                    background-color: #18181b !important;
+                    background: #18181b !important;
+                    color: #f8fafc !important;
+                    border-bottom: 1px solid #27272a !important;
+                }
+                app-header .header-panel {
                     width: auto !important;
-                    max-width: 90px !important;
                     display: inline-flex !important;
                     align-items: center !important;
                 }
-                .header-panel .main-btn mat-icon,
                 app-header .header-panel .main-btn mat-icon,
-                .header-right .main-btn mat-icon,
-                app-header .header-right .main-btn mat-icon {
+                app-header .header-right .main-btn mat-icon,
+                app-device .header-panel mat-icon {
                     color: #cbd5e1 !important;
                 }
-                .header-right,
-                app-header .header-right {
-                    background-color: transparent !important;
-                    background: transparent !important;
+                .container,
+                .work-editor,
+                .work-home,
+                .work-panel,
+                app-root,
+                app-device,
+                app-editor {
+                    background-color: #1e1e24 !important;
+                    background: #1e1e24 !important;
                 }
 
                 /* Strictly enforce read-only tag view on View Servers */
@@ -2032,7 +2047,7 @@
                 if (workPanel && !banner) {
                     banner = document.createElement('div');
                     banner.id = 'fuxa-statutory-device-banner';
-                    banner.style.cssText = 'background: #1e293b; border: 1.5px solid #eab308; border-left: 6px solid #eab308; border-radius: 6px; padding: 14px 20px; margin: 44px 20px 14px 20px; display: flex; align-items: flex-start; gap: 14px; color: #f1f5f9; font-size: 13.5px; font-family: system-ui, -apple-system, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,0.3); z-index: 100;';
+                    banner.style.cssText = 'background: #1e293b; border: 1.5px solid #eab308; border-left: 6px solid #eab308; border-radius: 6px; padding: 14px 20px; margin: 12px 20px 14px 20px; display: flex; align-items: flex-start; gap: 14px; color: #f1f5f9; font-size: 13.5px; font-family: system-ui, -apple-system, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,0.3); z-index: 100;';
                     const host = window.location.hostname || 'localhost';
                     banner.innerHTML = `
                         <span style="font-size: 24px; line-height: 1; margin-top: 2px;">⚠️</span>
@@ -2055,7 +2070,7 @@
                     `;
                     workPanel.prepend(banner);
                 } else if (banner) {
-                    banner.style.cssText = 'background: #1e293b; border: 1.5px solid #eab308; border-left: 6px solid #eab308; border-radius: 6px; padding: 14px 20px; margin: 44px 20px 14px 20px; display: flex; align-items: flex-start; gap: 14px; color: #f1f5f9; font-size: 13.5px; font-family: system-ui, -apple-system, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,0.3); z-index: 100;';
+                    banner.style.cssText = 'background: #1e293b; border: 1.5px solid #eab308; border-left: 6px solid #eab308; border-radius: 6px; padding: 14px 20px; margin: 12px 20px 14px 20px; display: flex; align-items: flex-start; gap: 14px; color: #f1f5f9; font-size: 13.5px; font-family: system-ui, -apple-system, sans-serif; box-shadow: 0 4px 14px rgba(0,0,0,0.3); z-index: 100;';
                 }
 
                 const btnAddStorage = document.getElementById('fuxa-btn-add-storage-device');

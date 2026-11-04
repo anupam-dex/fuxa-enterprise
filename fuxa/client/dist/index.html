@@ -41,18 +41,49 @@
         html, body {
             touch-action: manipulation;
             -webkit-text-size-adjust: none;
+            background-color: #1e1e24 !important;
+            color: #f8fafc !important;
         }
         :root {
-            --headerBackground: transparent !important;
+            --headerBackground: #18181b !important;
+            --headerColor: #f8fafc !important;
+            --headerBorder: #27272a !important;
+            --workPanelBackground: #1e1e24 !important;
+            --mainBackground: #1e1e24 !important;
+            --editorBackground: #1e1e24 !important;
         }
-        .header-panel, app-header .header-panel, div.header-panel {
-            background-color: transparent !important;
-            background: transparent !important;
+        /* Top app header and device header styling - eliminates all white backgrounds */
+        app-header,
+        .header,
+        app-header .header-panel,
+        app-header .header-right,
+        app-device .header-panel,
+        .header-panel {
+            background-color: #18181b !important;
+            background: #18181b !important;
+            color: #f8fafc !important;
+            border-bottom: 1px solid #27272a !important;
+        }
+        app-header .header-panel {
             width: auto !important;
-            max-width: 90px !important;
+            display: inline-flex !important;
+            align-items: center !important;
         }
-        .header-panel .main-btn mat-icon, app-header .header-panel .main-btn mat-icon {
+        app-header .header-panel .main-btn mat-icon,
+        app-header .header-right .main-btn mat-icon,
+        app-device .header-panel mat-icon {
             color: #cbd5e1 !important;
+        }
+        /* Eradicate hardcoded #FFFFFF from workspace containers */
+        .container,
+        .work-editor,
+        .work-home,
+        .work-panel,
+        app-root,
+        app-device,
+        app-editor {
+            background-color: #1e1e24 !important;
+            background: #1e1e24 !important;
         }
     </style>
 
@@ -103,6 +134,6 @@
             </div>
         </div>
     </app-root>
-<script src="runtime.9136a61a9b98f987.js" type="module"></script><script src="polyfills.d7de05f9af2fb559.js" type="module"></script><script src="scripts.881aa41c5d79c759.js" defer></script><script src="main.98af40d1468efed8.js" type="module"></script><script src="assets/fuxa-custom-url.js?v=33"></script></body>
+<script src="runtime.9136a61a9b98f987.js" type="module"></script><script src="polyfills.d7de05f9af2fb559.js" type="module"></script><script src="scripts.881aa41c5d79c759.js" defer></script><script src="main.98af40d1468efed8.js" type="module"></script><script src="assets/fuxa-custom-url.js?v=35"></script></body>
 
 </html>
