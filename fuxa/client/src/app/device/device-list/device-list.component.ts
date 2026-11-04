@@ -10,7 +10,7 @@ import { SelectionModel } from '@angular/cdk/collections';
 import { TranslateService } from '@ngx-translate/core';
 
 import { TagOptionType, TagOptionsComponent } from './../tag-options/tag-options.component';
-import { Tag, Device, DeviceType, TAG_PREFIX } from '../../_models/device';
+import { Tag, TagDaq, Device, DeviceType, TAG_PREFIX } from '../../_models/device';
 import { ProjectService } from '../../_services/project.service';
 import { HmiService } from '../../_services/hmi.service';
 import { ConfirmDialogComponent } from '../../gui-helpers/confirm-dialog/confirm-dialog.component';
@@ -411,6 +411,32 @@ export class DeviceListComponent implements OnInit, AfterViewInit {
                 this.projectService.setDeviceTags(this.deviceSelected);
             }
         });
+    }
+
+    /** Batch enable historical DAQ logging for all tags in the currently selected device */
+    onEnableAllDaq(interval = 60) {
+        if (!this.deviceSelected || !this.deviceSelected.tags) return;
+        const tags = Object.values(this.deviceSelected.tags);
+        tags.forEach((tag: Tag) => {
+            tag.daq = new TagDaq(true, true, interval, false);
+        });
+        this.projectService.setDeviceTags(this.deviceSelected);
+        this.bindToTable(this.deviceSelected.tags);
+        this.changeDetector.detectChanges();
+    }
+
+    /** Batch disable historical DAQ logging for all tags in the currently selected device */
+    onDisableAllDaq() {
+        if (!this.deviceSelected || !this.deviceSelected.tags) return;
+        const tags = Object.values(this.deviceSelected.tags);
+        tags.forEach((tag: Tag) => {
+            if (tag.daq) {
+                tag.daq.enabled = false;
+            }
+        });
+        this.projectService.setDeviceTags(this.deviceSelected);
+        this.bindToTable(this.deviceSelected.tags);
+        this.changeDetector.detectChanges();
     }
 
     updateDeviceValue() {

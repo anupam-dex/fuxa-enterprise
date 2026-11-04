@@ -15,6 +15,15 @@
             <span>{{'device.list-filter' | translate}}</span>
             <input (keyup)="applyFilter($event.target.value)" style="width: 450px" type="text">
         </div>
+        <div class="my-form-field daq-batch-toolbar" style="padding-left: 10px; display: inline-flex; align-items: center; gap: 8px;">
+            <button mat-stroked-button color="primary" (click)="onEnableAllDaq()" matTooltip="Enable historical DAQ logging for all tags in this device" style="font-size: 12px; height: 32px; line-height: 32px;">
+                <mat-icon style="font-size: 16px; width: 16px; height: 16px; margin-right: 4px; vertical-align: middle;">storage</mat-icon>
+                Enable All Historical (DAQ)
+            </button>
+            <button mat-button (click)="onDisableAllDaq()" matTooltip="Disable historical logging for all tags in this device" style="font-size: 12px; height: 32px; line-height: 32px; color: #94a3b8;">
+                Disable All
+            </button>
+        </div>
     </div>
     <div class="table-container">
         <div class="table-scroll">

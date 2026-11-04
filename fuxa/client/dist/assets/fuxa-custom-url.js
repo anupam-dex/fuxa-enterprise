@@ -2745,6 +2745,258 @@
         } catch (e) {}
     }
 
+    // =========================================================================
+    // Batch Historical DAQ Logging for Connected Tags (Top of Tag List)
+    // =========================================================================
+    let lastDaqCheckedDevice = '';
+    let isSavingBatchDaq = false;
+
+    function ensureBatchDaqControlOnTagList() {
+        const filterEl = document.querySelector('app-device-list .filter');
+        if (!filterEl || filterEl.offsetParent === null) {
+            lastDaqCheckedDevice = '';
+            return;
+        }
+
+        const selectText = filterEl.querySelector('mat-select .mat-select-value-text, mat-select .mat-select-value');
+        const currentDevName = selectText ? selectText.textContent.trim() : '';
+        if (!currentDevName) return;
+
+        let toolbar = filterEl.querySelector('#fuxa-batch-daq-toolbar');
+        if (!toolbar) {
+            toolbar = document.createElement('div');
+            toolbar.id = 'fuxa-batch-daq-toolbar';
+            toolbar.style.cssText = 'display: inline-flex; align-items: center; gap: 8px; margin-left: 14px; padding: 4px 10px; background: #161f2e; border: 1.5px solid #2d3b4f; border-radius: 6px; vertical-align: middle; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; box-shadow: 0 2px 6px rgba(0,0,0,0.25);';
+
+            toolbar.innerHTML = `
+                <span id="fuxa-batch-daq-pill" style="font-size: 11px; font-weight: 600; color: #38bdf8; display: inline-flex; align-items: center; gap: 5px;">
+                    <span style="font-size: 13px;">🗄️</span> Historical DAQ: <strong id="fuxa-batch-daq-count" style="color: #f1f5f9; font-weight: 700;">--</strong>
+                </span>
+                <div style="display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #94a3b8; border-left: 1px solid #334155; padding-left: 8px;">
+                    <span>Interval:</span>
+                    <select id="fuxa-batch-daq-interval" style="background: #0f172a; color: #f8fafc; border: 1px solid #475569; border-radius: 4px; padding: 2px 4px; font-size: 11px; cursor: pointer; outline: none;">
+                        <option value="1">1s</option>
+                        <option value="5">5s</option>
+                        <option value="10">10s</option>
+                        <option value="30">30s</option>
+                        <option value="60" selected>60s</option>
+                    </select>
+                </div>
+                <button id="fuxa-btn-enable-all-daq" style="background: #0284c7; color: white; border: none; border-radius: 4px; padding: 4px 10px; font-size: 11px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; transition: background 0.15s ease;" title="Enable historical DAQ logging for all tags in this device">
+                    <span>⚡</span> Enable All Tags
+                </button>
+                <button id="fuxa-btn-disable-all-daq" style="background: #334155; color: #cbd5e1; border: 1px solid #475569; border-radius: 4px; padding: 4px 8px; font-size: 11px; cursor: pointer; transition: background 0.15s ease;" title="Disable historical DAQ logging for all tags in this device">
+                    Disable All
+                </button>
+            `;
+
+            filterEl.appendChild(toolbar);
+
+            const btnEnable = toolbar.querySelector('#fuxa-btn-enable-all-daq');
+            const btnDisable = toolbar.querySelector('#fuxa-btn-disable-all-daq');
+
+            btnEnable.addEventListener('mouseenter', () => { if (!btnEnable.disabled) btnEnable.style.background = '#0369a1'; });
+            btnEnable.addEventListener('mouseleave', () => { if (!btnEnable.disabled) btnEnable.style.background = '#0284c7'; });
+
+            btnDisable.addEventListener('mouseenter', () => { if (!btnDisable.disabled) btnDisable.style.background = '#475569'; });
+            btnDisable.addEventListener('mouseleave', () => { if (!btnDisable.disabled) btnDisable.style.background = '#334155'; });
+
+            btnEnable.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (isSavingBatchDaq) return;
+                const selectText = filterEl.querySelector('mat-select .mat-select-value-text, mat-select .mat-select-value');
+                const targetDevName = selectText ? selectText.textContent.trim() : '';
+                if (!targetDevName) {
+                    showBatchToast('Please select a device first', true);
+                    return;
+                }
+
+                isSavingBatchDaq = true;
+                btnEnable.disabled = true;
+                btnEnable.innerHTML = '<span>⏳</span> Saving...';
+
+                try {
+                    let res = await fetch('api/project').catch(() => null);
+                    if (!res || !res.ok) res = await fetch('/api/project').catch(() => null);
+                    if (!res || !res.ok) throw new Error('Could not fetch project data');
+                    const project = await res.json();
+                    const devices = project.devices || {};
+                    const dev = Object.values(devices).find(d => d.name === targetDevName);
+                    if (!dev) throw new Error(`Device "${targetDevName}" not found in project`);
+
+                    const tags = dev.tags || {};
+                    const tagCount = Object.keys(tags).length;
+                    if (tagCount === 0) {
+                        showBatchToast(`Device "${targetDevName}" has no tags to enable`, true);
+                        return;
+                    }
+
+                    const intervalSec = parseInt(document.getElementById('fuxa-batch-daq-interval').value, 10) || 60;
+                    for (let tid in tags) {
+                        tags[tid].daq = {
+                            enabled: true,
+                            interval: intervalSec,
+                            changed: true,
+                            restored: false
+                        };
+                    }
+
+                    let postRes = await fetch('api/projectData', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ cmd: 'set-device', data: dev })
+                    }).catch(() => null);
+
+                    if (!postRes || !postRes.ok) {
+                        postRes = await fetch('/api/projectData', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ cmd: 'set-device', data: dev })
+                        }).catch(() => null);
+                    }
+
+                    if (postRes && postRes.ok) {
+                        showBatchToast(`✓ Historical logging enabled for all ${tagCount} tags in ${targetDevName} (${intervalSec}s)!`);
+                        refreshDeviceListTable();
+                        updateBatchDaqStatus(targetDevName);
+                    } else {
+                        throw new Error('Server returned error while saving tags');
+                    }
+                } catch (err) {
+                    showBatchToast(`Error: ${err.message}`, true);
+                } finally {
+                    isSavingBatchDaq = false;
+                    btnEnable.disabled = false;
+                    btnEnable.innerHTML = '<span>⚡</span> Enable All Tags';
+                }
+            });
+
+            btnDisable.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (isSavingBatchDaq) return;
+                const selectText = filterEl.querySelector('mat-select .mat-select-value-text, mat-select .mat-select-value');
+                const targetDevName = selectText ? selectText.textContent.trim() : '';
+                if (!targetDevName) return;
+
+                if (!confirm(`Disable historical DAQ logging for all tags in "${targetDevName}"?`)) return;
+
+                isSavingBatchDaq = true;
+                btnDisable.disabled = true;
+                btnDisable.textContent = 'Saving...';
+
+                try {
+                    let res = await fetch('api/project').catch(() => null);
+                    if (!res || !res.ok) res = await fetch('/api/project').catch(() => null);
+                    if (!res || !res.ok) throw new Error('Could not fetch project data');
+                    const project = await res.json();
+                    const devices = project.devices || {};
+                    const dev = Object.values(devices).find(d => d.name === targetDevName);
+                    if (!dev) return;
+
+                    const tags = dev.tags || {};
+                    for (let tid in tags) {
+                        if (tags[tid].daq) {
+                            tags[tid].daq.enabled = false;
+                        }
+                    }
+
+                    let postRes = await fetch('api/projectData', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ cmd: 'set-device', data: dev })
+                    }).catch(() => null);
+
+                    if (!postRes || !postRes.ok) {
+                        postRes = await fetch('/api/projectData', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ cmd: 'set-device', data: dev })
+                        }).catch(() => null);
+                    }
+
+                    if (postRes && postRes.ok) {
+                        showBatchToast(`✓ Historical logging disabled for all tags in ${targetDevName}.`);
+                        refreshDeviceListTable();
+                        updateBatchDaqStatus(targetDevName);
+                    } else {
+                        throw new Error('Server returned error while updating tags');
+                    }
+                } catch (err) {
+                    showBatchToast(`Error: ${err.message}`, true);
+                } finally {
+                    isSavingBatchDaq = false;
+                    btnDisable.disabled = false;
+                    btnDisable.textContent = 'Disable All';
+                }
+            });
+        }
+
+        // If selected device changed, update the active count badge
+        if (currentDevName !== lastDaqCheckedDevice) {
+            lastDaqCheckedDevice = currentDevName;
+            updateBatchDaqStatus(currentDevName);
+        }
+    }
+
+    async function updateBatchDaqStatus(targetDevName) {
+        const countEl = document.getElementById('fuxa-batch-daq-count');
+        const pillEl = document.getElementById('fuxa-batch-daq-pill');
+        if (!countEl || !targetDevName) return;
+
+        try {
+            let res = await fetch('api/project').catch(() => null);
+            if (!res || !res.ok) res = await fetch('/api/project').catch(() => null);
+            if (!res || !res.ok) return;
+            const project = await res.json();
+            const devices = project.devices || {};
+            const dev = Object.values(devices).find(d => d.name === targetDevName);
+            if (!dev || !dev.tags) {
+                countEl.textContent = '0 tags';
+                return;
+            }
+            const tags = Object.values(dev.tags);
+            const total = tags.length;
+            const enabled = tags.filter(t => t.daq && t.daq.enabled).length;
+
+            countEl.textContent = `${enabled}/${total} Active`;
+            if (pillEl) {
+                if (enabled > 0 && enabled === total) {
+                    pillEl.style.color = '#4ade80';
+                } else if (enabled > 0) {
+                    pillEl.style.color = '#facc15';
+                } else {
+                    pillEl.style.color = '#94a3b8';
+                }
+            }
+        } catch (e) {}
+    }
+
+    function refreshDeviceListTable() {
+        const reloadBtn = document.querySelector('button.fab-reload[ng-reflect-ng-class], app-device button.fab-reload');
+        if (reloadBtn) {
+            reloadBtn.click();
+        }
+    }
+
+    function showBatchToast(msg, isError = false) {
+        let toast = document.getElementById('fuxa-batch-daq-toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'fuxa-batch-daq-toast';
+            document.body.appendChild(toast);
+        }
+        toast.style.cssText = `position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%); background: #0f172a; border: 1.5px solid ${isError ? '#ef4444' : '#0284c7'}; color: ${isError ? '#fca5a5' : '#38bdf8'}; padding: 10px 22px; border-radius: 8px; font-size: 13px; font-weight: 600; box-shadow: 0 12px 28px rgba(0,0,0,0.6); z-index: 999999; font-family: system-ui, -apple-system, sans-serif; transition: opacity 0.3s ease; opacity: 1; pointer-events: none;`;
+        toast.textContent = msg;
+
+        clearTimeout(toast._timeout);
+        toast._timeout = setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => { if (toast.parentNode) toast.remove(); }, 350);
+        }, 3200);
+    }
+
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init, { once: true });
     } else {
@@ -2760,6 +3012,7 @@
         enforceViewServerRestrictions();
         enforceViewPropertyLayout();
         ensureEditorToolIcons();
+        ensureBatchDaqControlOnTagList();
 
         // Prevent FUXA core socket reconnect from auto-reloading while modal dialogs are open
         if (document.querySelector('.cdk-overlay-pane, mat-dialog-container, app-view-property, app-app-settings')) {
