@@ -8,6 +8,31 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 cd "$SCRIPT_DIR"
 
+# Pre-flight check: Verify Node.js version (Requires Node.js 18+ or 20+ LTS)
+if ! command -v node &>/dev/null; then
+    echo "❌ ERROR: Node.js is not installed."
+    echo "FUXA Enterprise SCADA requires Node.js 20 LTS."
+    echo "To install on Ubuntu/Debian:"
+    echo "  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -"
+    echo "  sudo apt install -y nodejs build-essential python3-venv"
+    exit 1
+fi
+
+NODE_MAJOR=$(node -v 2>/dev/null | tr -d 'v' | cut -d. -f1)
+if [ -n "$NODE_MAJOR" ] && [ "$NODE_MAJOR" -lt 18 ]; then
+    echo "=========================================================================="
+    echo "❌ ERROR: Outdated Node.js version detected: $(node -v)"
+    echo "FUXA Enterprise SCADA and modern npm modules require Node.js 18 or 20 LTS."
+    echo ""
+    echo "To upgrade to Node.js 20 LTS on Ubuntu/Debian, simply run:"
+    echo "  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -"
+    echo "  sudo apt install -y nodejs build-essential python3-venv"
+    echo "  rm -rf fuxa/server/node_modules"
+    echo "  ./start_all.sh"
+    echo "=========================================================================="
+    exit 1
+fi
+
 VENV_PYTHON="$SCRIPT_DIR/venv/bin/python3"
 
 if [ ! -f "$VENV_PYTHON" ]; then
